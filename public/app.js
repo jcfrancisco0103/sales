@@ -5,6 +5,8 @@ const API_BASE = '/api';
 let currentEditingId = null;
 let currentMonth = '';
 let currentYear = '';
+let allSales = []; // Store all sales for filtering
+let searchQuery = ''; // Store search query
 
 // Plan definitions
 const PLAN_DATA = {
@@ -61,8 +63,9 @@ async function checkAuth() {
         if (data.authenticated) {
             showApp();
             loadMonths();
-            loadSales();
             loadStatistics();
+            // Load sales when switching to sales page
+            switchPage('dashboard');
         } else {
             showAuthModal();
         }
@@ -106,8 +109,19 @@ function setupEventListeners() {
     // Month filter
     document.getElementById('monthFilter').addEventListener('change', handleMonthFilter);
 
+    // Navigation tabs
+    document.querySelectorAll('.nav-tab').forEach(tab => {
+        tab.addEventListener('click', (e) => {
+            const page = e.currentTarget.dataset.page;
+            switchPage(page);
+        });
+    });
+
     // Add sale button
     document.getElementById('addSaleBtn').addEventListener('click', () => openSaleModal());
+
+    // Customer search
+    document.getElementById('customerSearch').addEventListener('input', handleCustomerSearch);
 
     // Sale form
     document.getElementById('saleForm').addEventListener('submit', handleSaleSubmit);
@@ -279,6 +293,45 @@ async function loadMonths() {
     }
 }
 
+// Switch between pages
+function switchPage(page) {
+    // Update nav tabs
+    document.querySelectorAll('.nav-tab').forEach(tab => {
+        tab.classList.remove('active');
+    });
+    const activeTab = document.querySelector(`[data-page="${page}"]`);
+    if (activeTab) {
+        activeTab.classList.add('active');
+    }
+
+    // Update pages
+    document.querySelectorAll('.page').forEach(p => {
+        p.classList.add('hidden');
+        p.classList.remove('active');
+    });
+    const activePage = document.getElementById(`${page}Page`);
+    if (activePage) {
+        activePage.classList.remove('hidden');
+        activePage.classList.add('active');
+    }
+
+    // Load data if needed
+    if (page === 'sales') {
+        loadSales();
+    } else if (page === 'dashboard') {
+        loadStatistics();
+    }
+    
+    // Clear search when switching pages
+    if (page === 'dashboard') {
+        const searchInput = document.getElementById('customerSearch');
+        if (searchInput) {
+            searchInput.value = '';
+            searchQuery = '';
+        }
+    }
+}
+
 // Handle month filter
 function handleMonthFilter(e) {
     const value = e.target.value;
@@ -306,25 +359,39 @@ async function loadSales() {
         const response = await fetch(`${API_BASE}/sales?${params}`);
         const sales = await response.json();
 
-        // Debug: log the sales data received
-        if (sales.length > 0) {
-            console.log('Sales data received from server:', sales.map(s => ({
-                id: s.id,
-                date_bought: s.date_bought,
-                date_expiry: s.date_expiry,
-                duration: s.duration,
-                customer_name: s.customer_name
-            })));
-        }
+        // Store all sales for filtering
+        allSales = sales;
 
-        const tbody = document.getElementById('salesTableBody');
-        
-        if (sales.length === 0) {
-            tbody.innerHTML = '<tr><td colspan="12" class="empty-state">No sales records found</td></tr>';
-            return;
-        }
+        // Apply search filter
+        displaySales(filterSales(sales));
 
-        tbody.innerHTML = sales.map(sale => `
+    } catch (error) {
+        console.error('Error loading sales:', error);
+    }
+}
+
+// Filter sales based on search query
+function filterSales(sales) {
+    if (!searchQuery.trim()) {
+        return sales;
+    }
+    
+    const query = searchQuery.toLowerCase().trim();
+    return sales.filter(sale => 
+        sale.customer_name.toLowerCase().includes(query)
+    );
+}
+
+// Display sales in table
+function displaySales(sales) {
+    const tbody = document.getElementById('salesTableBody');
+    
+    if (sales.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="12" class="empty-state">No sales records found</td></tr>';
+        return;
+    }
+
+    tbody.innerHTML = sales.map(sale => `
             <tr>
                 <td>${formatDate(sale.date_bought)}</td>
                 <td>${sale.date_expiry ? formatDate(sale.date_expiry) : '-'}</td>
@@ -346,9 +413,13 @@ async function loadSales() {
                 </td>
             </tr>
         `).join('');
-    } catch (error) {
-        console.error('Error loading sales:', error);
-    }
+}
+
+// Handle customer search
+function handleCustomerSearch(e) {
+    searchQuery = e.target.value;
+    // Filter the already loaded sales
+    displaySales(filterSales(allSales));
 }
 
 // Load statistics
@@ -785,6 +856,8 @@ async function handleSaleSubmit(e) {
             setTimeout(() => {
                 loadSales();
                 loadStatistics();
+                // Switch to sales page to see the new/updated sale
+                switchPage('sales');
             }, 100);
         } else {
             console.error('Error saving sale:', data);
@@ -827,6 +900,8 @@ async function renewSale(id) {
             loadSales();
             loadStatistics();
             alert('Subscription renewed successfully!');
+            // Switch to sales page to see the updated expiry
+            switchPage('sales');
         } else {
             alert(data.error || 'Error renewing subscription');
         }
@@ -851,6 +926,8 @@ async function deleteSale(id) {
         if (response.ok) {
             loadSales();
             loadStatistics();
+            // Stay on sales page after deletion
+            switchPage('sales');
         } else {
             alert(data.error || 'Error deleting sale');
         }

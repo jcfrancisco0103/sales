@@ -69,7 +69,19 @@
             </div>
         </header>
 
-        <div class="container">
+        <!-- Navigation Tabs -->
+        <nav class="nav-tabs">
+            <button class="nav-tab active" data-page="dashboard" id="dashboardTab">
+                <span>📊 Dashboard</span>
+            </button>
+            <button class="nav-tab" data-page="sales" id="salesTab">
+                <span>📋 Sales Management</span>
+            </button>
+        </nav>
+
+        <!-- Dashboard Page -->
+        <div id="dashboardPage" class="page active">
+            <div class="container">
             <!-- Statistics Cards -->
             <div class="stats-grid" style="grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));">
                 <div class="stat-card">
@@ -140,37 +152,46 @@
                     </div>
                 </div>
             </div>
+        </div>
+        </div>
 
-            <!-- Add Sale Button -->
-            <div class="action-bar">
-                <button id="addSaleBtn" class="btn btn-primary">+ Add New Sale</button>
-            </div>
+        <!-- Sales Management Page -->
+        <div id="salesPage" class="page hidden">
+            <div class="container">
+                <!-- Search and Add Sale Bar -->
+                <div class="action-bar">
+                    <div class="search-container">
+                        <input type="text" id="customerSearch" placeholder="Search by customer name..." class="search-input">
+                    </div>
+                    <button id="addSaleBtn" class="btn btn-primary">+ Add New Sale</button>
+                </div>
 
-            <!-- Sales Table -->
-            <div class="table-container">
-                <table id="salesTable" class="sales-table">
-                    <thead>
-                        <tr>
-                            <th>Date Bought</th>
-                            <th>Date Expiry</th>
-                            <th>Customer Name</th>
-                            <th>Plan</th>
-                            <th>CPU</th>
-                            <th>RAM</th>
-                            <th>DISK</th>
-                            <th>Amount</th>
-                            <th>Payment Method</th>
-                            <th>Status</th>
-                            <th>Created By</th>
-                            <th>Actions</th>
-                        </tr>
-                    </thead>
-                    <tbody id="salesTableBody">
-                        <tr>
-                            <td colspan="12" class="empty-state">No sales records found</td>
-                        </tr>
-                    </tbody>
-                </table>
+                <!-- Sales Table -->
+                <div class="table-container">
+                    <table id="salesTable" class="sales-table">
+                        <thead>
+                            <tr>
+                                <th>Date Bought</th>
+                                <th>Date Expiry</th>
+                                <th>Customer Name</th>
+                                <th>Plan</th>
+                                <th>CPU</th>
+                                <th>RAM</th>
+                                <th>DISK</th>
+                                <th>Amount</th>
+                                <th>Payment Method</th>
+                                <th>Status</th>
+                                <th>Created By</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="salesTableBody">
+                            <tr>
+                                <td colspan="12" class="empty-state">No sales records found</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
             </div>
         </div>
     </div>
