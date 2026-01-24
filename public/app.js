@@ -340,6 +340,7 @@ async function loadSales() {
                 <td>
                     <div class="action-buttons">
                         <button class="btn btn-edit" onclick="editSale(${sale.id})">Edit</button>
+                        <button class="btn btn-renew" onclick="renewSale(${sale.id})" title="Renew subscription">Renew</button>
                         <button class="btn btn-danger" onclick="deleteSale(${sale.id})">Delete</button>
                     </div>
                 </td>
@@ -806,6 +807,31 @@ async function editSale(id) {
         }
     } catch (error) {
         console.error('Error loading sale:', error);
+    }
+}
+
+// Renew sale
+async function renewSale(id) {
+    if (!confirm('Are you sure you want to renew this subscription? The expiry date will be extended based on the duration.')) {
+        return;
+    }
+
+    try {
+        const response = await fetch(`${API_BASE}/sales/${id}/renew`, {
+            method: 'POST'
+        });
+
+        const data = await response.json();
+
+        if (response.ok) {
+            loadSales();
+            loadStatistics();
+            alert('Subscription renewed successfully!');
+        } else {
+            alert(data.error || 'Error renewing subscription');
+        }
+    } catch (error) {
+        alert('Network error. Please try again.');
     }
 }
 

@@ -354,6 +354,83 @@ app.put('/api/sales/:id', requireAuth, (req, res) => {
   );
 });
 
+// Renew sale
+app.post('/api/sales/:id/renew', requireAuth, (req, res) => {
+  const { id } = req.params;
+
+  // Get the current sale to find duration and current expiry
+  db.get('SELECT duration, date_expiry FROM sales WHERE id = ?', [id], (err, sale) => {
+    if (err) {
+      return res.status(500).json({ error: 'Error fetching sale' });
+    }
+    if (!sale) {
+      return res.status(404).json({ error: 'Sale not found' });
+    }
+
+    if (!sale.duration) {
+      return res.status(400).json({ error: 'Cannot renew: Duration not set for this sale' });
+    }
+
+    // Calculate new expiry date
+    let newExpiryDate;
+    const today = new Date();
+    
+    // Use current expiry date if it exists and is in the future, otherwise use today
+    let baseDate = today;
+    if (sale.date_expiry) {
+      const expiryDate = new Date(sale.date_expiry);
+      if (expiryDate > today) {
+        baseDate = expiryDate;
+      }
+    }
+
+    const newExpiry = new Date(baseDate);
+
+    // Add duration to the base date
+    switch (sale.duration) {
+      case '1 month':
+        newExpiry.setMonth(newExpiry.getMonth() + 1);
+        break;
+      case '6 Months':
+        newExpiry.setMonth(newExpiry.getMonth() + 6);
+        break;
+      case '1 Year':
+        newExpiry.setFullYear(newExpiry.getFullYear() + 1);
+        break;
+      default:
+        return res.status(400).json({ error: 'Invalid duration' });
+    }
+
+    // Format as YYYY-MM-DD
+    const year = newExpiry.getFullYear();
+    const month = String(newExpiry.getMonth() + 1).padStart(2, '0');
+    const day = String(newExpiry.getDate()).padStart(2, '0');
+    newExpiryDate = `${year}-${month}-${day}`;
+
+    // Update the sale with new expiry date
+    db.run(
+      'UPDATE sales SET date_expiry = ? WHERE id = ?',
+      [newExpiryDate, id],
+      function(updateErr) {
+        if (updateErr) {
+          console.error('Error renewing sale:', updateErr);
+          return res.status(500).json({ error: 'Error renewing sale: ' + updateErr.message });
+        }
+        if (this.changes === 0) {
+          return res.status(404).json({ error: 'Sale not found' });
+        }
+        console.log('Sale renewed successfully:', {
+          id,
+          oldExpiry: sale.date_expiry,
+          newExpiry: newExpiryDate,
+          duration: sale.duration
+        });
+        res.json({ success: true, newExpiry: newExpiryDate });
+      }
+    );
+  });
+});
+
 // Delete sale
 app.delete('/api/sales/:id', requireAuth, (req, res) => {
   const { id } = req.params;
