@@ -1,0 +1,18 @@
+[Unit]
+Description=AstryxNodes Sales Management System
+After=network.target
+
+[Service]
+Type=simple
+User=ubuntu
+WorkingDirectory=/home/ubuntu/sales
+Environment=NODE_ENV=production
+ExecStart=/usr/bin/node /home/ubuntu/sales/server.js
+Restart=always
+RestartSec=10
+StandardOutput=syslog
+StandardError=syslog
+SyslogIdentifier=sales-app
+
+[Install]
+WantedBy=multi-user.target

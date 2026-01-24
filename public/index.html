@@ -1,0 +1,263 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AstryxNodes Sales Management</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <!-- Login/Register Modal -->
+    <div id="authModal" class="modal">
+        <div class="modal-content">
+            <div class="auth-tabs">
+                <button class="tab-btn active" data-tab="login">Login</button>
+                <button class="tab-btn" data-tab="register">Register</button>
+            </div>
+
+            <!-- Login Form -->
+            <div id="loginTab" class="auth-tab active">
+                <h2>Login</h2>
+                <form id="loginForm">
+                    <div class="form-group">
+                        <label for="loginUsername">Username</label>
+                        <input type="text" id="loginUsername" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="loginPassword">Password</label>
+                        <input type="password" id="loginPassword" required>
+                    </div>
+                    <button type="submit" class="btn btn-primary">Login</button>
+                </form>
+                <div id="loginError" class="error-message"></div>
+            </div>
+
+            <!-- Register Form -->
+            <div id="registerTab" class="auth-tab">
+                <h2>Register</h2>
+                <form id="registerForm">
+                    <div class="form-group">
+                        <label for="registerUsername">Username</label>
+                        <input type="text" id="registerUsername" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="registerPassword">Password</label>
+                        <input type="password" id="registerPassword" required minlength="6">
+                    </div>
+                    <div class="form-group">
+                        <label for="repeatPassword">Repeat Password</label>
+                        <input type="password" id="repeatPassword" required minlength="6">
+                    </div>
+                    <button type="submit" class="btn btn-primary">Register</button>
+                </form>
+                <div id="registerError" class="error-message"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Main App -->
+    <div id="app" class="hidden">
+        <header class="header">
+            <h1>AstryxNodes Sales Management</h1>
+            <div class="header-actions">
+                <div class="month-filter">
+                    <select id="monthFilter">
+                        <option value="">All Months</option>
+                    </select>
+                </div>
+                <button id="logoutBtn" class="btn btn-secondary">Logout</button>
+            </div>
+        </header>
+
+        <div class="container">
+            <!-- Statistics Cards -->
+            <div class="stats-grid" style="grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));">
+                <div class="stat-card">
+                    <h3>Total Sales</h3>
+                    <p class="stat-month" id="totalSalesMonth"></p>
+                    <p class="stat-value" id="totalSales">0</p>
+                </div>
+                <div class="stat-card">
+                    <h3>Total Amount</h3>
+                    <p class="stat-value" id="totalAmount">₱0.00</p>
+                </div>
+                <div class="stat-card">
+                    <h3>Paid Sales</h3>
+                    <p class="stat-value" id="paidSales">0</p>
+                </div>
+                <div class="stat-card">
+                    <h3>Paid Amount</h3>
+                    <p class="stat-value" id="paidAmount">₱0.00</p>
+                </div>
+                <div class="stat-card">
+                    <h3>Pending Amount</h3>
+                    <p class="stat-value" id="pendingAmount">₱0.00</p>
+                </div>
+            </div>
+
+            <!-- VPS Expenses -->
+            <div class="vps-expenses-section">
+                <h2>VPS Expenses</h2>
+                <div class="vps-grid">
+                    <div class="vps-item">
+                        <span class="vps-label">Panel</span>
+                        <span class="vps-amount">FREE</span>
+                    </div>
+                    <div class="vps-item">
+                        <span class="vps-label">Node 1</span>
+                        <span class="vps-amount">₱1,019.00</span>
+                    </div>
+                    <div class="vps-item">
+                        <span class="vps-label">Node 2</span>
+                        <span class="vps-amount">₱1,019.00</span>
+                    </div>
+                    <div class="vps-item">
+                        <span class="vps-label">Node 3</span>
+                        <span class="vps-amount">FREE</span>
+                    </div>
+                    <div class="vps-total">
+                        <span class="vps-total-label">Total VPS Expenses</span>
+                        <span class="vps-total-amount" id="vpsTotal">₱2,038.00</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Salary Distribution -->
+            <div class="salary-section">
+                <h2>Salary Distribution</h2>
+                <div class="salary-grid">
+                    <div class="salary-card">
+                        <h3>Owner (30%)</h3>
+                        <p class="salary-value" id="ownerSalary">₱0.00</p>
+                    </div>
+                    <div class="salary-card">
+                        <h3>Developer (30%)</h3>
+                        <p class="salary-value" id="developerSalary">₱0.00</p>
+                    </div>
+                    <div class="salary-card">
+                        <h3>Advertiser (20%)</h3>
+                        <p class="salary-value" id="advertiserSalary">₱0.00</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Add Sale Button -->
+            <div class="action-bar">
+                <button id="addSaleBtn" class="btn btn-primary">+ Add New Sale</button>
+            </div>
+
+            <!-- Sales Table -->
+            <div class="table-container">
+                <table id="salesTable" class="sales-table">
+                    <thead>
+                        <tr>
+                            <th>Date Bought</th>
+                            <th>Date Expiry</th>
+                            <th>Customer Name</th>
+                            <th>Plan</th>
+                            <th>CPU</th>
+                            <th>RAM</th>
+                            <th>DISK</th>
+                            <th>Amount</th>
+                            <th>Payment Method</th>
+                            <th>Status</th>
+                            <th>Created By</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody id="salesTableBody">
+                        <tr>
+                            <td colspan="12" class="empty-state">No sales records found</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <!-- Add/Edit Sale Modal -->
+    <div id="saleModal" class="modal hidden">
+        <div class="modal-content modal-large">
+            <span class="close">&times;</span>
+            <h2 id="modalTitle">Add New Sale</h2>
+            <form id="saleForm">
+                <div class="form-grid">
+                    <div class="form-group">
+                        <label for="dateBought">Date Bought *</label>
+                        <input type="date" id="dateBought" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="duration">Duration *</label>
+                        <select id="duration" required>
+                            <option value="">Select Duration</option>
+                            <option value="1 month">1 Month</option>
+                            <option value="6 Months">6 Months</option>
+                            <option value="1 Year">1 Year</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="dateExpiry">Date Expiry (Auto-calculated)</label>
+                        <input type="date" id="dateExpiry" readonly style="background-color: #f1f5f9; cursor: not-allowed;">
+                    </div>
+                    <div class="form-group">
+                        <label for="customerName">Customer Name *</label>
+                        <input type="text" id="customerName" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="planSelect">Select Plan *</label>
+                        <select id="planSelect" required>
+                            <option value="">Select a Plan</option>
+                            <option value="Pig Plan">Pig Plan</option>
+                            <option value="Sheep Plan">Sheep Plan</option>
+                            <option value="Cow Plan">Cow Plan</option>
+                            <option value="Creeper Plan">Creeper Plan</option>
+                            <option value="Zombie Plan">Zombie Plan</option>
+                            <option value="Skeleton Plan">Skeleton Plan</option>
+                            <option value="Custom Plan">Custom Plan</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="cpu">CPU *</label>
+                        <input type="text" id="cpu" required placeholder="150%">
+                    </div>
+                    <div class="form-group">
+                        <label for="ram">RAM *</label>
+                        <input type="text" id="ram" required placeholder="6GB">
+                    </div>
+                    <div class="form-group">
+                        <label for="disk">DISK *</label>
+                        <input type="text" id="disk" required placeholder="10GB">
+                    </div>
+                    <div class="form-group">
+                        <label for="amount">Amount (PHP) *</label>
+                        <input type="number" id="amount" step="0.01" min="0" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="paymentMethod">Payment Method *</label>
+                        <select id="paymentMethod" required>
+                            <option value="">Select Payment Method</option>
+                            <option value="Bank Transfer">Bank Transfer</option>
+                            <option value="GCash">GCash</option>
+                            <option value="PayMaya">PayMaya</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="status">Status *</label>
+                        <select id="status" required>
+                            <option value="">Select Status</option>
+                            <option value="Paid">Paid</option>
+                            <option value="Pending">Pending</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="form-actions">
+                    <button type="button" class="btn btn-secondary" id="cancelBtn">Cancel</button>
+                    <button type="submit" class="btn btn-primary">Save Sale</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+</html>
