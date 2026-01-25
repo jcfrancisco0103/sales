@@ -1,3 +1,4 @@
+require('dotenv').config();
 const express = require('express');
 const sqlite3 = require('sqlite3').verbose();
 const bcrypt = require('bcrypt');
@@ -6,7 +7,7 @@ const bodyParser = require('body-parser');
 const path = require('path');
 
 const app = express();
-const PORT = 3020;
+const PORT = process.env.PORT || 3020;
 
 // Middleware
 app.use(bodyParser.json());
@@ -70,6 +71,30 @@ function initializeDatabase() {
       console.log('Note: duration column may already exist');
     }
   });
+
+  // Create system user for automated orders if it doesn't exist
+  db.get('SELECT id FROM users WHERE username = ?', ['system'], (err, user) => {
+    if (err) {
+      console.error('Error checking for system user:', err);
+      return;
+    }
+    if (!user) {
+      // Create system user with a random password (won't be used for login)
+      bcrypt.hash('system-user-' + Date.now(), 10, (err, hash) => {
+        if (err) {
+          console.error('Error hashing system user password:', err);
+          return;
+        }
+        db.run('INSERT INTO users (username, password) VALUES (?, ?)', ['system', hash], (err) => {
+          if (err) {
+            console.error('Error creating system user:', err);
+          } else {
+            console.log('System user created for automated orders');
+          }
+        });
+      });
+    }
+  });
 }
 
 // Authentication middleware
@@ -79,6 +104,23 @@ function requireAuth(req, res, next) {
   } else {
     res.status(401).json({ error: 'Unauthorized' });
   }
+}
+
+// API Key authentication middleware for automated order creation
+function requireApiKey(req, res, next) {
+  const apiKey = req.headers['x-api-key'] || req.body.apiKey;
+  const expectedApiKey = process.env.SALES_API_KEY;
+  
+  if (!expectedApiKey) {
+    console.error('SALES_API_KEY not configured in environment variables');
+    return res.status(500).json({ error: 'API key authentication not configured' });
+  }
+  
+  if (!apiKey || apiKey !== expectedApiKey) {
+    return res.status(401).json({ error: 'Invalid API key' });
+  }
+  
+  next();
 }
 
 // API Routes
@@ -248,6 +290,70 @@ app.get('/api/statistics', requireAuth, (req, res) => {
         advertiser: advertiserSalary
       }
     });
+  });
+});
+
+// Create sale (automated - for order integration)
+app.post('/api/sales/auto', requireApiKey, (req, res) => {
+  const {
+    date_bought,
+    duration,
+    date_expiry,
+    customer_name,
+    plan,
+    cpu,
+    ram,
+    disk,
+    amount,
+    payment_method,
+    status
+  } = req.body;
+
+  console.log('Received automated sale data:', {
+    date_bought,
+    duration,
+    date_expiry,
+    customer_name,
+    plan
+  });
+
+  if (!date_bought || !customer_name || !plan || !cpu || !ram || !disk || !amount || !payment_method || !status) {
+    return res.status(400).json({ error: 'All fields are required' });
+  }
+
+  if (status !== 'Paid' && status !== 'Pending') {
+    return res.status(400).json({ error: 'Status must be Paid or Pending' });
+  }
+
+  // Get system user ID for automated orders
+  db.get('SELECT id FROM users WHERE username = ?', ['system'], (err, systemUser) => {
+    if (err) {
+      console.error('Error fetching system user:', err);
+      return res.status(500).json({ error: 'Error fetching system user: ' + err.message });
+    }
+    
+    if (!systemUser) {
+      return res.status(500).json({ error: 'System user not found. Please restart the server to create it.' });
+    }
+    
+    db.run(
+      `INSERT INTO sales (date_bought, duration, date_expiry, customer_name, plan, cpu, ram, disk, amount, payment_method, status, created_by)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [date_bought, duration || null, date_expiry || null, customer_name, plan, cpu, ram, disk, amount, payment_method, status, systemUser.id],
+    function(err) {
+      if (err) {
+        console.error('Error creating automated sale:', err);
+        return res.status(500).json({ error: 'Error creating sale: ' + err.message });
+      }
+      console.log('Automated sale created successfully:', {
+        id: this.lastID,
+        date_bought,
+        date_expiry,
+        duration
+      });
+      res.json({ success: true, id: this.lastID });
+    }
+    );
   });
 });
 
@@ -470,19 +576,24 @@ app.get('/', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
 
-// Start server
-app.listen(PORT, () => {
-  console.log(`Server running on http://localhost:${PORT}`);
-});
-
-// Graceful shutdown
-process.on('SIGINT', () => {
-  db.close((err) => {
-    if (err) {
-      console.error('Error closing database:', err.message);
-    } else {
-      console.log('Database connection closed');
-    }
-    process.exit(0);
+// Start server (only if not in serverless environment)
+if (process.env.VERCEL !== '1') {
+  app.listen(PORT, () => {
+    console.log(`Server running on http://localhost:${PORT}`);
   });
-});
+
+  // Graceful shutdown
+  process.on('SIGINT', () => {
+    db.close((err) => {
+      if (err) {
+        console.error('Error closing database:', err.message);
+      } else {
+        console.log('Database connection closed');
+      }
+      process.exit(0);
+    });
+  });
+}
+
+// Export for Vercel serverless
+module.exports = app;
