@@ -5,8 +5,8 @@ const API_BASE = '/api';
 let currentEditingId = null;
 let currentMonth = '';
 let currentYear = '';
-let allSalesData = []; // Store all sales for client-side filtering
-let currentSearchQuery = '';
+let allSales = []; // Store all sales for filtering
+let searchQuery = ''; // Store search query
 
 // Plan definitions
 const PLAN_DATA = {
@@ -200,17 +200,22 @@ function setupEventListeners() {
         monthFilter.addEventListener('change', handleMonthFilter);
     }
 
-    // Customer search
-    const customerSearch = document.getElementById('customerSearch');
-    if (customerSearch) {
-        customerSearch.addEventListener('input', handleCustomerSearch);
-    }
+    // Navigation tabs
+    document.querySelectorAll('.nav-tab').forEach(tab => {
+        tab.addEventListener('click', (e) => {
+            const page = e.currentTarget.dataset.page;
+            switchPage(page);
+        });
+    });
 
     // Add sale button
     const addSaleBtn = document.getElementById('addSaleBtn');
     if (addSaleBtn) {
         addSaleBtn.addEventListener('click', () => openSaleModal());
     }
+
+    // Customer search
+    document.getElementById('customerSearch').addEventListener('input', handleCustomerSearch);
 
     // Sale form
     const saleForm = document.getElementById('saleForm');
@@ -390,6 +395,45 @@ async function loadMonths() {
     }
 }
 
+// Switch between pages
+function switchPage(page) {
+    // Update nav tabs
+    document.querySelectorAll('.nav-tab').forEach(tab => {
+        tab.classList.remove('active');
+    });
+    const activeTab = document.querySelector(`[data-page="${page}"]`);
+    if (activeTab) {
+        activeTab.classList.add('active');
+    }
+
+    // Update pages
+    document.querySelectorAll('.page').forEach(p => {
+        p.classList.add('hidden');
+        p.classList.remove('active');
+    });
+    const activePage = document.getElementById(`${page}Page`);
+    if (activePage) {
+        activePage.classList.remove('hidden');
+        activePage.classList.add('active');
+    }
+
+    // Load data if needed
+    if (page === 'sales') {
+        loadSales();
+    } else if (page === 'dashboard') {
+        loadStatistics();
+    }
+    
+    // Clear search when switching pages
+    if (page === 'dashboard') {
+        const searchInput = document.getElementById('customerSearch');
+        if (searchInput) {
+            searchInput.value = '';
+            searchQuery = '';
+        }
+    }
+}
+
 // Handle month filter
 function handleMonthFilter(e) {
     const value = e.target.value;
@@ -479,14 +523,67 @@ async function loadSales() {
         const response = await fetch(`${API_BASE}/sales?${params}`);
         const sales = await response.json();
 
-        // Store all sales data
-        allSalesData = sales;
+        // Store all sales for filtering
+        allSales = sales;
 
-        // Apply filters and display
-        filterAndDisplaySales();
+        // Apply search filter
+        displaySales(filterSales(sales));
+
     } catch (error) {
         console.error('Error loading sales:', error);
     }
+}
+
+// Filter sales based on search query
+function filterSales(sales) {
+    if (!searchQuery.trim()) {
+        return sales;
+    }
+    
+    const query = searchQuery.toLowerCase().trim();
+    return sales.filter(sale => 
+        sale.customer_name.toLowerCase().includes(query)
+    );
+}
+
+// Display sales in table
+function displaySales(sales) {
+    const tbody = document.getElementById('salesTableBody');
+    
+    if (sales.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="12" class="empty-state">No sales records found</td></tr>';
+        return;
+    }
+
+    tbody.innerHTML = sales.map(sale => `
+            <tr>
+                <td>${formatDate(sale.date_bought)}</td>
+                <td>${sale.date_expiry ? formatDate(sale.date_expiry) : '-'}</td>
+                <td>${escapeHtml(sale.customer_name)}</td>
+                <td>${escapeHtml(sale.plan)}</td>
+                <td>${escapeHtml(sale.cpu)}</td>
+                <td>${escapeHtml(sale.ram)}</td>
+                <td>${escapeHtml(sale.disk)}</td>
+                <td>₱${formatCurrency(sale.amount)}</td>
+                <td>${escapeHtml(sale.payment_method)}</td>
+                <td><span class="status-badge ${sale.status.toLowerCase()}">${sale.status}</span></td>
+                <td>${escapeHtml(sale.created_by_username)}</td>
+                <td>
+                    <div class="action-buttons">
+                        <button class="btn btn-edit" onclick="editSale(${sale.id})">Edit</button>
+                        <button class="btn btn-renew" onclick="renewSale(${sale.id})" title="Renew subscription">Renew</button>
+                        <button class="btn btn-danger" onclick="deleteSale(${sale.id})">Delete</button>
+                    </div>
+                </td>
+            </tr>
+        `).join('');
+}
+
+// Handle customer search
+function handleCustomerSearch(e) {
+    searchQuery = e.target.value;
+    // Filter the already loaded sales
+    displaySales(filterSales(allSales));
 }
 
 // Load statistics
@@ -923,12 +1020,8 @@ async function handleSaleSubmit(e) {
             setTimeout(() => {
                 loadSales();
                 loadStatistics();
-                // Clear search to show all results after adding/editing
-                const customerSearch = document.getElementById('customerSearch');
-                if (customerSearch) {
-                    customerSearch.value = '';
-                    currentSearchQuery = '';
-                }
+                // Switch to sales page to see the new/updated sale
+                switchPage('sales');
             }, 100);
         } else {
             console.error('Error saving sale:', data);
@@ -971,7 +1064,8 @@ async function renewSale(id) {
             loadSales();
             loadStatistics();
             alert('Subscription renewed successfully!');
-            // Keep search filter active after renewal
+            // Switch to sales page to see the updated expiry
+            switchPage('sales');
         } else {
             alert(data.error || 'Error renewing subscription');
         }
@@ -996,7 +1090,8 @@ async function deleteSale(id) {
         if (response.ok) {
             loadSales();
             loadStatistics();
-            // Keep search filter active after deletion
+            // Stay on sales page after deletion
+            switchPage('sales');
         } else {
             alert(data.error || 'Error deleting sale');
         }
