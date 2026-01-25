@@ -6,7 +6,7 @@ const bodyParser = require('body-parser');
 const path = require('path');
 
 const app = express();
-const PORT = 3020;
+const PORT = process.env.PORT || 3020;
 
 // Middleware
 app.use(bodyParser.json());
@@ -470,19 +470,24 @@ app.get('/', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
 
-// Start server
-app.listen(PORT, () => {
-  console.log(`Server running on http://localhost:${PORT}`);
-});
-
-// Graceful shutdown
-process.on('SIGINT', () => {
-  db.close((err) => {
-    if (err) {
-      console.error('Error closing database:', err.message);
-    } else {
-      console.log('Database connection closed');
-    }
-    process.exit(0);
+// Start server (only if not in serverless environment)
+if (process.env.VERCEL !== '1') {
+  app.listen(PORT, () => {
+    console.log(`Server running on http://localhost:${PORT}`);
   });
-});
+
+  // Graceful shutdown
+  process.on('SIGINT', () => {
+    db.close((err) => {
+      if (err) {
+        console.error('Error closing database:', err.message);
+      } else {
+        console.log('Database connection closed');
+      }
+      process.exit(0);
+    });
+  });
+}
+
+// Export for Vercel serverless
+module.exports = app;
