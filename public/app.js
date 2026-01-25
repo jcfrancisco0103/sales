@@ -128,7 +128,10 @@ function switchMainTab(tabName) {
             if (monthFilterContainer) {
                 monthFilterContainer.style.display = 'none';
             }
-            // Load statistics for home page
+            // Reset month filter to show all time statistics
+            currentMonth = '';
+            currentYear = '';
+            // Load statistics for home page (all time)
             loadStatistics();
         } else if (tabName === 'sales') {
             const salesTab = document.getElementById('salesTab');
@@ -139,6 +142,19 @@ function switchMainTab(tabName) {
             const monthFilterContainer = document.getElementById('monthFilterContainer');
             if (monthFilterContainer) {
                 monthFilterContainer.style.display = 'block';
+            }
+            // Reset month filter when switching to sales tab (show all sales initially)
+            currentMonth = '';
+            currentYear = '';
+            const monthFilter = document.getElementById('monthFilter');
+            if (monthFilter) {
+                monthFilter.value = '';
+            }
+            // Reset search when switching to sales tab
+            currentSearchQuery = '';
+            const customerSearch = document.getElementById('customerSearch');
+            if (customerSearch) {
+                customerSearch.value = '';
             }
             // Load sales data when switching to sales tab
             loadMonths();
@@ -429,18 +445,80 @@ function handleMonthFilter(e) {
         currentMonth = '';
         currentYear = '';
     }
-    loadSales();
-    loadStatistics();
+    // Apply filters (month + search) and display
+    filterAndDisplaySales();
+}
+
+// Handle customer search
+function handleCustomerSearch(e) {
+    currentSearchQuery = e.target.value.trim().toLowerCase();
+    filterAndDisplaySales();
+}
+
+// Filter and display sales based on month filter and search query
+function filterAndDisplaySales() {
+    let filteredSales = [...allSalesData];
+
+    // Apply month filter if set
+    if (currentMonth && currentYear) {
+        filteredSales = filteredSales.filter(sale => {
+            const saleDate = new Date(sale.date_bought);
+            const saleMonth = String(saleDate.getMonth() + 1).padStart(2, '0');
+            const saleYear = String(saleDate.getFullYear());
+            return saleMonth === currentMonth.padStart(2, '0') && saleYear === currentYear;
+        });
+    }
+
+    // Apply search filter if set
+    if (currentSearchQuery) {
+        filteredSales = filteredSales.filter(sale => {
+            return sale.customer_name.toLowerCase().includes(currentSearchQuery);
+        });
+    }
+
+    // Display filtered sales
+    displaySales(filteredSales);
+}
+
+// Display sales in the table
+function displaySales(sales) {
+    const tbody = document.getElementById('salesTableBody');
+    
+    if (sales.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="12" class="empty-state">No sales records found</td></tr>';
+        return;
+    }
+
+    tbody.innerHTML = sales.map(sale => `
+        <tr>
+            <td>${formatDate(sale.date_bought)}</td>
+            <td>${sale.date_expiry ? formatDate(sale.date_expiry) : '-'}</td>
+            <td>${escapeHtml(sale.customer_name)}</td>
+            <td>${escapeHtml(sale.plan)}</td>
+            <td>${escapeHtml(sale.cpu)}</td>
+            <td>${escapeHtml(sale.ram)}</td>
+            <td>${escapeHtml(sale.disk)}</td>
+            <td>₱${formatCurrency(sale.amount)}</td>
+            <td>${escapeHtml(sale.payment_method)}</td>
+            <td><span class="status-badge ${sale.status.toLowerCase()}">${sale.status}</span></td>
+            <td>${escapeHtml(sale.created_by_username)}</td>
+            <td>
+                <div class="action-buttons">
+                    <button class="btn btn-edit" onclick="editSale(${sale.id})">Edit</button>
+                    <button class="btn btn-renew" onclick="renewSale(${sale.id})" title="Renew subscription">Renew</button>
+                    <button class="btn btn-danger" onclick="deleteSale(${sale.id})">Delete</button>
+                </div>
+            </td>
+        </tr>
+    `).join('');
 }
 
 // Load sales
 async function loadSales() {
     try {
         const params = new URLSearchParams();
-        if (currentMonth && currentYear) {
-            params.append('month', currentMonth);
-            params.append('year', currentYear);
-        }
+        // Always fetch all sales for client-side filtering
+        // Month filter will be applied client-side along with search
 
         const response = await fetch(`${API_BASE}/sales?${params}`);
         const sales = await response.json();
