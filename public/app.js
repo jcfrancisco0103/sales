@@ -60,9 +60,6 @@ async function checkAuth() {
         
         if (data.authenticated) {
             showApp();
-            loadMonths();
-            loadSales();
-            loadStatistics();
         } else {
             showAuthModal();
         }
@@ -80,9 +77,76 @@ function showAuthModal() {
 
 // Show main app
 function showApp() {
-    document.getElementById('authModal').classList.add('hidden');
-    document.getElementById('app').classList.remove('hidden');
+    try {
+        const authModal = document.getElementById('authModal');
+        const app = document.getElementById('app');
+        
+        if (authModal) authModal.classList.add('hidden');
+        if (app) app.classList.remove('hidden');
+        
+        // Initialize with home tab
+        switchMainTab('home');
+        // Load statistics for home page
+        loadStatistics();
+    } catch (error) {
+        console.error('Error showing app:', error);
+    }
 }
+
+// Switch main tabs (Home/Sales Management)
+function switchMainTab(tabName) {
+    try {
+        // Update tab buttons
+        const tabButtons = document.querySelectorAll('.main-tab-btn');
+        if (tabButtons.length === 0) {
+            console.warn('Main tab buttons not found');
+            return;
+        }
+        
+        tabButtons.forEach(btn => {
+            if (btn.dataset.mainTab === tabName) {
+                btn.classList.add('active');
+            } else {
+                btn.classList.remove('active');
+            }
+        });
+
+        // Update tab content
+        document.querySelectorAll('.tab-content').forEach(content => {
+            content.classList.remove('active');
+        });
+
+        if (tabName === 'home') {
+            const homeTab = document.getElementById('homeTab');
+            if (homeTab) {
+                homeTab.classList.add('active');
+            }
+            // Hide month filter when on home tab
+            const monthFilterContainer = document.getElementById('monthFilterContainer');
+            if (monthFilterContainer) {
+                monthFilterContainer.style.display = 'none';
+            }
+            // Load statistics for home page
+            loadStatistics();
+        } else if (tabName === 'sales') {
+            const salesTab = document.getElementById('salesTab');
+            if (salesTab) {
+                salesTab.classList.add('active');
+            }
+            // Show month filter when on sales tab
+            const monthFilterContainer = document.getElementById('monthFilterContainer');
+            if (monthFilterContainer) {
+                monthFilterContainer.style.display = 'block';
+            }
+            // Load sales data when switching to sales tab
+            loadMonths();
+            loadSales();
+        }
+    } catch (error) {
+        console.error('Error switching main tab:', error);
+    }
+}
+
 
 // Setup event listeners
 function setupEventListeners() {
@@ -94,6 +158,7 @@ function setupEventListeners() {
         });
     });
 
+
     // Login form
     document.getElementById('loginForm').addEventListener('submit', handleLogin);
 
@@ -103,17 +168,48 @@ function setupEventListeners() {
     // Logout
     document.getElementById('logoutBtn').addEventListener('click', handleLogout);
 
+    // Main tabs (Home/Sales Management)
+    document.querySelectorAll('.main-tab-btn').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+            const tab = e.target.dataset.mainTab;
+            switchMainTab(tab);
+        });
+    });
+
     // Month filter
-    document.getElementById('monthFilter').addEventListener('change', handleMonthFilter);
+    const monthFilter = document.getElementById('monthFilter');
+    if (monthFilter) {
+        monthFilter.addEventListener('change', handleMonthFilter);
+    }
 
     // Add sale button
-    document.getElementById('addSaleBtn').addEventListener('click', () => openSaleModal());
+    const addSaleBtn = document.getElementById('addSaleBtn');
+    if (addSaleBtn) {
+        addSaleBtn.addEventListener('click', () => openSaleModal());
+    }
 
     // Sale form
-    document.getElementById('saleForm').addEventListener('submit', handleSaleSubmit);
+    const saleForm = document.getElementById('saleForm');
+    if (saleForm) {
+        saleForm.addEventListener('submit', handleSaleSubmit);
+        // Calculate expiry date when date bought or duration changes
+        saleForm.addEventListener('change', (e) => {
+            if (e.target.id === 'dateBought' || e.target.id === 'duration') {
+                calculateExpiryDate();
+            }
+        });
+        saleForm.addEventListener('input', (e) => {
+            if (e.target.id === 'dateBought' || e.target.id === 'duration') {
+                calculateExpiryDate();
+            }
+        });
+    }
 
     // Plan selection handler
-    document.getElementById('planSelect').addEventListener('change', handlePlanSelection);
+    const planSelect = document.getElementById('planSelect');
+    if (planSelect) {
+        planSelect.addEventListener('change', handlePlanSelection);
+    }
 
     // Auto-format CPU, RAM, and DISK fields for custom plan
     const cpuInput = document.getElementById('cpu');
@@ -132,36 +228,30 @@ function setupEventListeners() {
         diskInput.addEventListener('input', formatDISK);
         diskInput.addEventListener('blur', formatDISK);
     }
-
-    // Calculate expiry date when date bought or duration changes
-    // Use event delegation on the form to ensure it works even when modal is hidden
-    const saleForm = document.getElementById('saleForm');
-    if (saleForm) {
-        saleForm.addEventListener('change', (e) => {
-            if (e.target.id === 'dateBought' || e.target.id === 'duration') {
-                calculateExpiryDate();
-            }
-        });
-        saleForm.addEventListener('input', (e) => {
-            if (e.target.id === 'dateBought' || e.target.id === 'duration') {
-                calculateExpiryDate();
-            }
-        });
-    }
     
     // Event delegation should handle most cases, but we'll also ensure
     // the calculation runs when the modal opens
 
     // Modal close
-    document.querySelector('.close').addEventListener('click', closeSaleModal);
-    document.getElementById('cancelBtn').addEventListener('click', closeSaleModal);
+    const closeBtn = document.querySelector('.close');
+    if (closeBtn) {
+        closeBtn.addEventListener('click', closeSaleModal);
+    }
+    
+    const cancelBtn = document.getElementById('cancelBtn');
+    if (cancelBtn) {
+        cancelBtn.addEventListener('click', closeSaleModal);
+    }
 
     // Close modal on outside click
-    document.getElementById('saleModal').addEventListener('click', (e) => {
-        if (e.target.id === 'saleModal') {
-            closeSaleModal();
-        }
-    });
+    const saleModal = document.getElementById('saleModal');
+    if (saleModal) {
+        saleModal.addEventListener('click', (e) => {
+            if (e.target.id === 'saleModal') {
+                closeSaleModal();
+            }
+        });
+    }
 }
 
 // Switch auth tabs
@@ -201,9 +291,6 @@ async function handleLogin(e) {
 
         if (response.ok) {
             showApp();
-            loadMonths();
-            loadSales();
-            loadStatistics();
             document.getElementById('loginForm').reset();
         } else {
             errorDiv.textContent = data.error || 'Login failed';
