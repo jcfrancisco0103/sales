@@ -23,16 +23,37 @@ const useCookieSession = process.env.VERCEL || process.env.USE_COOKIE_SESSION ==
 if (useCookieSession) {
   // Use cookie-session for Vercel (serverless-friendly)
   // Cookie-session stores data in the cookie itself, perfect for serverless
-  app.use(cookieSession({
-    name: 'session',
-    keys: [process.env.SESSION_SECRET || 'sales-app-secret-key-change-in-production'],
-    maxAge: 24 * 60 * 60 * 1000, // 24 hours
-    secure: isProduction,
-    httpOnly: true,
-    sameSite: 'lax'
-  }));
+  const sessionSecret = process.env.SESSION_SECRET || 'sales-app-secret-key-change-in-production';
   
-  console.log('Using cookie-session (serverless mode)');
+  // Cookie-session configuration
+  const cookieSessionConfig = {
+    name: 'session',
+    keys: [sessionSecret],
+    maxAge: 24 * 60 * 60 * 1000, // 24 hours
+    httpOnly: true,
+    signed: true // Sign cookies for security
+  };
+  
+  // Set secure and sameSite based on environment
+  if (isProduction) {
+    cookieSessionConfig.secure = true; // Required for HTTPS
+    cookieSessionConfig.sameSite = 'lax'; // 'lax' works for same-site requests
+  } else {
+    cookieSessionConfig.secure = false;
+    cookieSessionConfig.sameSite = 'lax';
+  }
+  
+  app.use(cookieSession(cookieSessionConfig));
+  
+  // Ensure session object exists
+  app.use((req, res, next) => {
+    if (!req.session) {
+      req.session = {};
+    }
+    next();
+  });
+  
+  console.log('Using cookie-session (serverless mode)', cookieSessionConfig);
 } else {
   // Use express-session for local development
   app.use(session({
@@ -289,11 +310,25 @@ app.post('/api/login', ensureDbInitialized, (req, res) => {
         
         console.log('Session created:', {
           userId: req.session.userId,
-          username: req.session.username
+          username: req.session.username,
+          sessionKeys: Object.keys(req.session || {})
         });
         
         // Cookie-session auto-saves, express-session needs explicit save
         if (useCookieSession) {
+          // Ensure session is properly set
+          req.session.userId = user.id;
+          req.session.username = user.username;
+          
+          // Force session to be saved by touching it
+          req.session = req.session; // This triggers cookie-session to save
+          
+          console.log('Cookie-session data:', {
+            userId: req.session.userId,
+            username: req.session.username,
+            allKeys: Object.keys(req.session)
+          });
+          
           res.json({ success: true, username: user.username });
         } else {
           req.session.save((err) => {
@@ -326,15 +361,18 @@ app.post('/api/logout', (req, res) => {
 
 // Check session
 app.get('/api/session', (req, res) => {
+  const sessionData = req.session || {};
   console.log('Session check:', {
-    sessionId: req.sessionID,
-    userId: req.session.userId,
-    username: req.session.username,
-    cookie: req.headers.cookie
+    hasSession: !!req.session,
+    sessionKeys: Object.keys(sessionData),
+    userId: sessionData.userId,
+    username: sessionData.username,
+    cookies: req.headers.cookie,
+    useCookieSession: useCookieSession
   });
   
-  if (req.session.userId) {
-    res.json({ authenticated: true, username: req.session.username });
+  if (sessionData.userId) {
+    res.json({ authenticated: true, username: sessionData.username });
   } else {
     res.json({ authenticated: false });
   }
