@@ -3,9 +3,10 @@ const express = require('express');
 const sqlite3 = require('sqlite3').verbose();
 const bcrypt = require('bcrypt');
 const session = require('express-session');
-const cookieSession = require('cookie-session');
+const cookieParser = require('cookie-parser');
 const bodyParser = require('body-parser');
 const path = require('path');
+const crypto = require('crypto');
 
 const app = express();
 const PORT = process.env.PORT || 3020;
@@ -15,60 +16,37 @@ app.use(bodyParser.json());
 app.use(bodyParser.urlencoded({ extended: true }));
 app.use(express.static(path.join(__dirname, 'public')));
 
-// Session configuration
-// On Vercel, use cookie-session for serverless compatibility (stores data in cookie, not server memory)
+// Simple session storage using cookies (works with serverless)
+const SESSION_SECRET = process.env.SESSION_SECRET || 'sales-app-secret-key-change-in-production';
 const isProduction = process.env.NODE_ENV === 'production' || process.env.VERCEL;
-const useCookieSession = process.env.VERCEL || process.env.USE_COOKIE_SESSION === 'true';
 
-if (useCookieSession) {
-  // Use cookie-session for Vercel (serverless-friendly)
-  // Cookie-session stores data in the cookie itself, perfect for serverless
-  const sessionSecret = process.env.SESSION_SECRET || 'sales-app-secret-key-change-in-production';
+app.use(cookieParser(SESSION_SECRET));
+
+// Session middleware - store user data in signed cookie
+app.use((req, res, next) => {
+  req.session = req.signedCookies.sessionData ? JSON.parse(req.signedCookies.sessionData) : {};
   
-  // Cookie-session configuration
-  const cookieSessionConfig = {
-    name: 'session',
-    keys: [sessionSecret],
-    maxAge: 24 * 60 * 60 * 1000, // 24 hours
-    httpOnly: true,
-    signed: true // Sign cookies for security
+  // Helper to save session
+  req.saveSession = (data) => {
+    const cookieOptions = {
+      httpOnly: true,
+      secure: isProduction,
+      sameSite: 'lax',
+      maxAge: 24 * 60 * 60 * 1000, // 24 hours
+      signed: true
+    };
+    res.cookie('sessionData', JSON.stringify(data), cookieOptions);
+    req.session = data;
   };
   
-  // Set secure and sameSite based on environment
-  if (isProduction) {
-    cookieSessionConfig.secure = true; // Required for HTTPS
-    cookieSessionConfig.sameSite = 'lax'; // 'lax' works for same-site requests
-  } else {
-    cookieSessionConfig.secure = false;
-    cookieSessionConfig.sameSite = 'lax';
-  }
+  // Helper to destroy session
+  req.destroySession = () => {
+    res.clearCookie('sessionData');
+    req.session = {};
+  };
   
-  app.use(cookieSession(cookieSessionConfig));
-  
-  // Ensure session object exists
-  app.use((req, res, next) => {
-    if (!req.session) {
-      req.session = {};
-    }
-    next();
-  });
-  
-  console.log('Using cookie-session (serverless mode)', cookieSessionConfig);
-} else {
-  // Use express-session for local development
-  app.use(session({
-    secret: process.env.SESSION_SECRET || 'sales-app-secret-key-change-in-production',
-    resave: true,
-    saveUninitialized: true,
-    name: 'sessionId',
-    cookie: { 
-      secure: isProduction,
-      httpOnly: true,
-      sameSite: 'lax',
-      maxAge: 24 * 60 * 60 * 1000
-    }
-  }));
-}
+  next();
+});
 
 // Database setup
 // On Vercel, use /tmp directory which is writable (but not persistent)
@@ -220,7 +198,7 @@ function ensureDbInitialized(req, res, next) {
 
 // Authentication middleware
 function requireAuth(req, res, next) {
-  if (req.session.userId) {
+  if (req.session && req.session.userId) {
     next();
   } else {
     res.status(401).json({ error: 'Unauthorized' });
@@ -351,11 +329,7 @@ app.post('/api/login', ensureDbInitialized, (req, res) => {
 
 // Logout
 app.post('/api/logout', (req, res) => {
-  if (useCookieSession) {
-    req.session = null;
-  } else {
-    req.session.destroy();
-  }
+  req.destroySession();
   res.json({ success: true });
 });
 
@@ -364,11 +338,10 @@ app.get('/api/session', (req, res) => {
   const sessionData = req.session || {};
   console.log('Session check:', {
     hasSession: !!req.session,
-    sessionKeys: Object.keys(sessionData),
+    sessionData: sessionData,
     userId: sessionData.userId,
     username: sessionData.username,
-    cookies: req.headers.cookie,
-    useCookieSession: useCookieSession
+    cookies: req.signedCookies
   });
   
   if (sessionData.userId) {
