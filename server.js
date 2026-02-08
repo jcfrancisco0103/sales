@@ -283,40 +283,18 @@ app.post('/api/login', ensureDbInitialized, (req, res) => {
     try {
       const match = await bcrypt.compare(password, user.password);
       if (match) {
-        req.session.userId = user.id;
-        req.session.username = user.username;
-        
-        console.log('Session created:', {
-          userId: req.session.userId,
-          username: req.session.username,
-          sessionKeys: Object.keys(req.session || {})
+        // Save session data to signed cookie
+        req.saveSession({
+          userId: user.id,
+          username: user.username
         });
         
-        // Cookie-session auto-saves, express-session needs explicit save
-        if (useCookieSession) {
-          // Ensure session is properly set
-          req.session.userId = user.id;
-          req.session.username = user.username;
-          
-          // Force session to be saved by touching it
-          req.session = req.session; // This triggers cookie-session to save
-          
-          console.log('Cookie-session data:', {
-            userId: req.session.userId,
-            username: req.session.username,
-            allKeys: Object.keys(req.session)
-          });
-          
-          res.json({ success: true, username: user.username });
-        } else {
-          req.session.save((err) => {
-            if (err) {
-              console.error('Error saving session:', err);
-              return res.status(500).json({ error: 'Error creating session' });
-            }
-            res.json({ success: true, username: user.username });
-          });
-        }
+        console.log('Session saved:', {
+          userId: user.id,
+          username: user.username
+        });
+        
+        res.json({ success: true, username: user.username });
       } else {
         res.status(401).json({ error: 'Invalid username or password' });
       }
