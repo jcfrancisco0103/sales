@@ -362,14 +362,37 @@ async function handleLogin(e) {
 
         console.log('Login response status:', response.status, response.statusText);
         
+        // Handle timeout errors
+        if (response.status === 504 || response.status === 503) {
+            errorDiv.textContent = 'Server timeout. This may be due to database initialization. Please try again in a few seconds.';
+            errorDiv.style.color = '#ef4444';
+            console.error('Server timeout - likely database initialization issue');
+            return;
+        }
+        
         let data;
         const contentType = response.headers.get('content-type');
         if (contentType && contentType.includes('application/json')) {
-            data = await response.json();
+            try {
+                data = await response.json();
+            } catch (jsonError) {
+                const text = await response.text();
+                console.error('Failed to parse JSON response:', text.substring(0, 200));
+                if (response.status === 504 || response.status === 503) {
+                    errorDiv.textContent = 'Server timeout. The database may be initializing. Please wait a moment and try again.';
+                } else {
+                    errorDiv.textContent = `Server error: ${response.status} ${response.statusText}`;
+                }
+                return;
+            }
         } else {
             const text = await response.text();
-            console.error('Non-JSON response:', text);
-            errorDiv.textContent = `Server error: ${response.status} ${response.statusText}`;
+            console.error('Non-JSON response:', text.substring(0, 200));
+            if (response.status === 504 || response.status === 503) {
+                errorDiv.textContent = 'Server timeout. Please try again in a few seconds.';
+            } else {
+                errorDiv.textContent = `Server error: ${response.status} ${response.statusText}`;
+            }
             return;
         }
 
@@ -472,14 +495,37 @@ async function handleRegister(e) {
 
         console.log('Register response status:', response.status, response.statusText);
         
+        // Handle timeout errors
+        if (response.status === 504 || response.status === 503) {
+            errorDiv.textContent = 'Server timeout. This may be due to database initialization. Please try again in a few seconds.';
+            errorDiv.style.color = '#ef4444';
+            console.error('Server timeout - likely database initialization issue');
+            return;
+        }
+        
         let data;
         const contentType = response.headers.get('content-type');
         if (contentType && contentType.includes('application/json')) {
-            data = await response.json();
+            try {
+                data = await response.json();
+            } catch (jsonError) {
+                const text = await response.text();
+                console.error('Failed to parse JSON response:', text);
+                if (response.status === 504 || response.status === 503) {
+                    errorDiv.textContent = 'Server timeout. The database may be initializing. Please wait a moment and try again.';
+                } else {
+                    errorDiv.textContent = `Server error: ${response.status} ${response.statusText}`;
+                }
+                return;
+            }
         } else {
             const text = await response.text();
-            console.error('Non-JSON response:', text);
-            errorDiv.textContent = `Server error: ${response.status} ${response.statusText}`;
+            console.error('Non-JSON response:', text.substring(0, 200));
+            if (response.status === 504 || response.status === 503) {
+                errorDiv.textContent = 'Server timeout. Please try again in a few seconds.';
+            } else {
+                errorDiv.textContent = `Server error: ${response.status} ${response.statusText}`;
+            }
             return;
         }
 

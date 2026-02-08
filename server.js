@@ -28,78 +28,140 @@ app.use(session({
 }));
 
 // Database setup
-const db = new sqlite3.Database('./sales.db', (err) => {
+// On Vercel, use /tmp directory which is writable (but not persistent)
+// For local development, use ./sales.db
+const dbPath = process.env.VERCEL ? '/tmp/sales.db' : './sales.db';
+const db = new sqlite3.Database(dbPath, sqlite3.OPEN_READWRITE | sqlite3.OPEN_CREATE, (err) => {
   if (err) {
     console.error('Error opening database:', err.message);
+    console.error('Database path:', dbPath);
   } else {
-    console.log('Connected to SQLite database');
-    initializeDatabase();
+    console.log('Connected to SQLite database:', dbPath);
+    // Initialize asynchronously to avoid blocking
+    setImmediate(() => {
+      initializeDatabase();
+    });
   }
 });
 
+// Enable WAL mode for better concurrency
+db.run('PRAGMA journal_mode = WAL;', (err) => {
+  if (err) {
+    console.log('Note: WAL mode not available (this is OK)');
+  }
+});
+
+// Track initialization state
+let dbInitialized = false;
+let dbInitializing = false;
+
 function initializeDatabase() {
+  if (dbInitialized || dbInitializing) {
+    return;
+  }
+  dbInitializing = true;
+  
+  console.log('Initializing database...');
+  
   // Users table
   db.run(`CREATE TABLE IF NOT EXISTS users (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     username TEXT UNIQUE NOT NULL,
     password TEXT NOT NULL,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-  )`);
-
-  // Sales table
-  db.run(`CREATE TABLE IF NOT EXISTS sales (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    date_bought TEXT NOT NULL,
-    date_expiry TEXT,
-    duration TEXT,
-    customer_name TEXT NOT NULL,
-    plan TEXT NOT NULL,
-    cpu TEXT NOT NULL,
-    ram TEXT NOT NULL,
-    disk TEXT NOT NULL,
-    amount REAL NOT NULL,
-    payment_method TEXT NOT NULL,
-    status TEXT NOT NULL CHECK(status IN ('Paid', 'Pending')),
-    created_by INTEGER NOT NULL,
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (created_by) REFERENCES users(id)
-  )`);
-
-  // Add new columns to existing table if they don't exist (ignore errors if columns already exist)
-  db.run(`ALTER TABLE sales ADD COLUMN date_expiry TEXT`, (err) => {
-    if (err && !err.message.includes('duplicate column')) {
-      console.log('Note: date_expiry column may already exist');
-    }
-  });
-  db.run(`ALTER TABLE sales ADD COLUMN duration TEXT`, (err) => {
-    if (err && !err.message.includes('duplicate column')) {
-      console.log('Note: duration column may already exist');
-    }
-  });
-
-  // Create system user for automated orders if it doesn't exist
-  db.get('SELECT id FROM users WHERE username = ?', ['system'], (err, user) => {
+  )`, (err) => {
     if (err) {
-      console.error('Error checking for system user:', err);
+      console.error('Error creating users table:', err);
+      dbInitializing = false;
       return;
     }
-    if (!user) {
-      // Create system user with a random password (won't be used for login)
-      bcrypt.hash('system-user-' + Date.now(), 10, (err, hash) => {
+    
+    // Sales table
+    db.run(`CREATE TABLE IF NOT EXISTS sales (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      date_bought TEXT NOT NULL,
+      date_expiry TEXT,
+      duration TEXT,
+      customer_name TEXT NOT NULL,
+      plan TEXT NOT NULL,
+      cpu TEXT NOT NULL,
+      ram TEXT NOT NULL,
+      disk TEXT NOT NULL,
+      amount REAL NOT NULL,
+      payment_method TEXT NOT NULL,
+      status TEXT NOT NULL CHECK(status IN ('Paid', 'Pending')),
+      created_by INTEGER NOT NULL,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (created_by) REFERENCES users(id)
+    )`, (err) => {
+      if (err) {
+        console.error('Error creating sales table:', err);
+        dbInitializing = false;
+        return;
+      }
+      
+      // Try to add columns (ignore if they exist)
+      db.run(`ALTER TABLE sales ADD COLUMN date_expiry TEXT`, () => {});
+      db.run(`ALTER TABLE sales ADD COLUMN duration TEXT`, () => {});
+      
+      // Create system user for automated orders if it doesn't exist
+      db.get('SELECT id FROM users WHERE username = ?', ['system'], (err, user) => {
         if (err) {
-          console.error('Error hashing system user password:', err);
-          return;
+          console.error('Error checking for system user:', err);
+        } else if (!user) {
+          // Create system user with a random password (won't be used for login)
+          bcrypt.hash('system-user-' + Date.now(), 10, (err, hash) => {
+            if (err) {
+              console.error('Error hashing system user password:', err);
+            } else {
+              db.run('INSERT INTO users (username, password) VALUES (?, ?)', ['system', hash], (err) => {
+                if (err) {
+                  console.error('Error creating system user:', err);
+                } else {
+                  console.log('System user created for automated orders');
+                }
+              });
+            }
+          });
         }
-        db.run('INSERT INTO users (username, password) VALUES (?, ?)', ['system', hash], (err) => {
-          if (err) {
-            console.error('Error creating system user:', err);
-          } else {
-            console.log('System user created for automated orders');
-          }
-        });
+        
+        dbInitialized = true;
+        dbInitializing = false;
+        console.log('Database initialization complete');
+      });
+    });
+  });
+}
+
+// Ensure database is initialized before handling requests
+function ensureDbInitialized(req, res, next) {
+  if (dbInitialized) {
+    return next();
+  }
+  
+  if (!dbInitializing) {
+    // Start initialization if not already started
+    initializeDatabase();
+  }
+  
+  // Wait for initialization with timeout
+  let attempts = 0;
+  const maxAttempts = 50; // 5 seconds max wait
+  
+  const checkInitialized = () => {
+    attempts++;
+    if (dbInitialized) {
+      return next();
+    }
+    if (attempts >= maxAttempts) {
+      return res.status(503).json({ 
+        error: 'Database initialization timeout. Please try again. Note: SQLite on Vercel has limitations - consider using a cloud database for production.' 
       });
     }
-  });
+    setTimeout(checkInitialized, 100);
+  };
+  
+  checkInitialized();
 }
 
 // Authentication middleware
@@ -131,7 +193,7 @@ function requireApiKey(req, res, next) {
 // API Routes
 
 // Register
-app.post('/api/register', async (req, res) => {
+app.post('/api/register', ensureDbInitialized, async (req, res) => {
   const { username, password, repeatPassword } = req.body;
 
   if (!username || !password || !repeatPassword) {
@@ -168,7 +230,7 @@ app.post('/api/register', async (req, res) => {
 });
 
 // Login
-app.post('/api/login', (req, res) => {
+app.post('/api/login', ensureDbInitialized, (req, res) => {
   const { username, password } = req.body;
 
   if (!username || !password) {
