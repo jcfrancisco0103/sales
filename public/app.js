@@ -351,15 +351,22 @@ async function handleLogin(e) {
     errorDiv.style.color = '#3b82f6';
 
     console.log('Attempting login for:', username);
+    console.log('Sending request to:', `${API_BASE}/login`);
+    
+    // Add timeout to fetch request
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 15000); // 15 second timeout
     
     try {
         const response = await fetch(`${API_BASE}/login`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             credentials: 'include',
+            signal: controller.signal,
             body: JSON.stringify({ username, password })
         });
 
+        clearTimeout(timeoutId);
         console.log('Login response status:', response.status, response.statusText);
         
         // Handle timeout errors
@@ -422,14 +429,21 @@ async function handleLogin(e) {
             console.error('Login error:', data);
         }
     } catch (error) {
-        errorDiv.textContent = 'Network error. Please check console for details.';
-        errorDiv.style.color = '#ef4444';
-        console.error('Login network error:', error);
-        console.error('Error details:', {
-            message: error.message,
-            stack: error.stack,
-            name: error.name
-        });
+        clearTimeout(timeoutId);
+        if (error.name === 'AbortError') {
+            errorDiv.textContent = 'Request timed out. The server may be initializing the database. Please wait a moment and try again.';
+            errorDiv.style.color = '#ef4444';
+            console.error('Login request timed out after 15 seconds');
+        } else {
+            errorDiv.textContent = 'Network error. Please check console for details.';
+            errorDiv.style.color = '#ef4444';
+            console.error('Login network error:', error);
+            console.error('Error details:', {
+                message: error.message,
+                stack: error.stack,
+                name: error.name
+            });
+        }
     } finally {
         // Restore button state
         if (submitButton) {
@@ -484,15 +498,22 @@ async function handleRegister(e) {
     errorDiv.style.color = '#3b82f6';
 
     console.log('Attempting registration for:', username);
+    console.log('Sending request to:', `${API_BASE}/register`);
+    
+    // Add timeout to fetch request
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 15000); // 15 second timeout
     
     try {
         const response = await fetch(`${API_BASE}/register`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             credentials: 'include',
+            signal: controller.signal,
             body: JSON.stringify({ username, password, repeatPassword })
         });
 
+        clearTimeout(timeoutId);
         console.log('Register response status:', response.status, response.statusText);
         
         // Handle timeout errors
@@ -545,14 +566,21 @@ async function handleRegister(e) {
             console.error('Registration error:', data);
         }
     } catch (error) {
-        errorDiv.textContent = 'Network error. Please check console for details.';
-        errorDiv.style.color = '#ef4444';
-        console.error('Registration network error:', error);
-        console.error('Error details:', {
-            message: error.message,
-            stack: error.stack,
-            name: error.name
-        });
+        clearTimeout(timeoutId);
+        if (error.name === 'AbortError') {
+            errorDiv.textContent = 'Request timed out. The server may be initializing the database. Please wait a moment and try again.';
+            errorDiv.style.color = '#ef4444';
+            console.error('Registration request timed out after 15 seconds');
+        } else {
+            errorDiv.textContent = 'Network error. Please check console for details.';
+            errorDiv.style.color = '#ef4444';
+            console.error('Registration network error:', error);
+            console.error('Error details:', {
+                message: error.message,
+                stack: error.stack,
+                name: error.name
+            });
+        }
     } finally {
         // Restore button state
         if (submitButton) {

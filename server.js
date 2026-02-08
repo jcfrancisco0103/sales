@@ -31,25 +31,33 @@ app.use(session({
 // On Vercel, use /tmp directory which is writable (but not persistent)
 // For local development, use ./sales.db
 const dbPath = process.env.VERCEL ? '/tmp/sales.db' : './sales.db';
-const db = new sqlite3.Database(dbPath, sqlite3.OPEN_READWRITE | sqlite3.OPEN_CREATE, (err) => {
-  if (err) {
-    console.error('Error opening database:', err.message);
-    console.error('Database path:', dbPath);
-  } else {
-    console.log('Connected to SQLite database:', dbPath);
-    // Initialize asynchronously to avoid blocking
-    setImmediate(() => {
-      initializeDatabase();
-    });
-  }
-});
+let db;
 
-// Enable WAL mode for better concurrency
-db.run('PRAGMA journal_mode = WAL;', (err) => {
-  if (err) {
-    console.log('Note: WAL mode not available (this is OK)');
-  }
-});
+try {
+  db = new sqlite3.Database(dbPath, sqlite3.OPEN_READWRITE | sqlite3.OPEN_CREATE, (err) => {
+    if (err) {
+      console.error('Error opening database:', err.message);
+      console.error('Database path:', dbPath);
+      dbInitialized = false;
+      dbInitializing = false;
+    } else {
+      console.log('Connected to SQLite database:', dbPath);
+      // Enable WAL mode for better concurrency
+      db.run('PRAGMA journal_mode = WAL;', (err) => {
+        if (err) {
+          console.log('Note: WAL mode not available (this is OK)');
+        }
+      });
+      // Initialize asynchronously to avoid blocking
+      setImmediate(() => {
+        initializeDatabase();
+      });
+    }
+  });
+} catch (error) {
+  console.error('Failed to create database connection:', error);
+  db = null;
+}
 
 // Track initialization state
 let dbInitialized = false;
@@ -104,30 +112,33 @@ function initializeDatabase() {
       db.run(`ALTER TABLE sales ADD COLUMN date_expiry TEXT`, () => {});
       db.run(`ALTER TABLE sales ADD COLUMN duration TEXT`, () => {});
       
-      // Create system user for automated orders if it doesn't exist
-      db.get('SELECT id FROM users WHERE username = ?', ['system'], (err, user) => {
-        if (err) {
-          console.error('Error checking for system user:', err);
-        } else if (!user) {
-          // Create system user with a random password (won't be used for login)
-          bcrypt.hash('system-user-' + Date.now(), 10, (err, hash) => {
-            if (err) {
-              console.error('Error hashing system user password:', err);
-            } else {
-              db.run('INSERT INTO users (username, password) VALUES (?, ?)', ['system', hash], (err) => {
-                if (err) {
-                  console.error('Error creating system user:', err);
-                } else {
-                  console.log('System user created for automated orders');
-                }
-              });
-            }
-          });
-        }
-        
-        dbInitialized = true;
-        dbInitializing = false;
-        console.log('Database initialization complete');
+      // Mark as initialized immediately - don't wait for system user
+      dbInitialized = true;
+      dbInitializing = false;
+      console.log('Database initialization complete');
+      
+      // Create system user asynchronously (non-blocking)
+      setImmediate(() => {
+        db.get('SELECT id FROM users WHERE username = ?', ['system'], (err, user) => {
+          if (err) {
+            console.error('Error checking for system user:', err);
+          } else if (!user) {
+            // Create system user with a random password (won't be used for login)
+            bcrypt.hash('system-user-' + Date.now(), 10, (err, hash) => {
+              if (err) {
+                console.error('Error hashing system user password:', err);
+              } else {
+                db.run('INSERT INTO users (username, password) VALUES (?, ?)', ['system', hash], (err) => {
+                  if (err) {
+                    console.error('Error creating system user:', err);
+                  } else {
+                    console.log('System user created for automated orders');
+                  }
+                });
+              }
+            });
+          }
+        });
       });
     });
   });
@@ -135,6 +146,13 @@ function initializeDatabase() {
 
 // Ensure database is initialized before handling requests
 function ensureDbInitialized(req, res, next) {
+  if (!db) {
+    console.error('Database connection not available');
+    return res.status(500).json({ 
+      error: 'Database connection failed. Please check server logs.' 
+    });
+  }
+  
   if (dbInitialized) {
     return next();
   }
@@ -144,9 +162,9 @@ function ensureDbInitialized(req, res, next) {
     initializeDatabase();
   }
   
-  // Wait for initialization with timeout
+  // Wait for initialization with shorter timeout
   let attempts = 0;
-  const maxAttempts = 50; // 5 seconds max wait
+  const maxAttempts = 10; // 1 second max wait (should be very fast now)
   
   const checkInitialized = () => {
     attempts++;
@@ -154,9 +172,10 @@ function ensureDbInitialized(req, res, next) {
       return next();
     }
     if (attempts >= maxAttempts) {
-      return res.status(503).json({ 
-        error: 'Database initialization timeout. Please try again. Note: SQLite on Vercel has limitations - consider using a cloud database for production.' 
-      });
+      console.error('Database initialization timeout after', attempts * 100, 'ms');
+      // Still proceed - let the request handler deal with it
+      // This prevents infinite waiting
+      return next();
     }
     setTimeout(checkInitialized, 100);
   };
@@ -194,7 +213,9 @@ function requireApiKey(req, res, next) {
 
 // Register
 app.post('/api/register', ensureDbInitialized, async (req, res) => {
+  console.log('Register endpoint called');
   const { username, password, repeatPassword } = req.body;
+  console.log('Register request body:', { username, hasPassword: !!password, hasRepeatPassword: !!repeatPassword });
 
   if (!username || !password || !repeatPassword) {
     return res.status(400).json({ error: 'All fields are required' });
