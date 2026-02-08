@@ -12,7 +12,7 @@ const PORT = process.env.PORT || 3020;
 // Middleware
 app.use(bodyParser.json());
 app.use(bodyParser.urlencoded({ extended: true }));
-app.use(express.static('public'));
+app.use(express.static(path.join(__dirname, 'public')));
 
 // Session configuration
 app.use(session({
@@ -574,6 +574,11 @@ app.get('/api/sales/months', requireAuth, (req, res) => {
 // Serve main page
 app.get('/', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'index.html'));
+});
+
+// Serve sales.html
+app.get('/sales.html', (req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'sales.html'));
 });
 
 // Start server (only if not in serverless environment)
