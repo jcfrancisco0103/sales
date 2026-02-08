@@ -274,9 +274,9 @@ app.get('/api/statistics', requireAuth, (req, res) => {
     }
 
     const totalAmount = row.total_amount || 0;
-    const ownerSalary = totalAmount * 0.30;
-    const developerSalary = totalAmount * 0.30;
-    const advertiserSalary = totalAmount * 0.20;
+    const ownerSalary = totalAmount * 0.35;
+    const developerSalary = totalAmount * 0.35;
+    const advertiserSalary = totalAmount * 0.25;
 
     res.json({
       totalSales: row.total_sales || 0,
