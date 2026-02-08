@@ -1,6 +1,9 @@
 // API Base URL
 const API_BASE = '/api';
 
+// Debug: Log API base URL
+console.log('API_BASE:', API_BASE);
+
 // State
 let currentEditingId = null;
 let currentMonth = '';
@@ -180,10 +183,22 @@ function setupEventListeners() {
 
 
     // Login form
-    document.getElementById('loginForm').addEventListener('submit', handleLogin);
+    const loginForm = document.getElementById('loginForm');
+    if (loginForm) {
+        loginForm.addEventListener('submit', handleLogin);
+        console.log('Login form event listener attached');
+    } else {
+        console.error('Login form not found!');
+    }
 
     // Register form
-    document.getElementById('registerForm').addEventListener('submit', handleRegister);
+    const registerForm = document.getElementById('registerForm');
+    if (registerForm) {
+        registerForm.addEventListener('submit', handleRegister);
+        console.log('Register form event listener attached');
+    } else {
+        console.error('Register form not found!');
+    }
 
     // Logout
     document.getElementById('logoutBtn').addEventListener('click', handleLogout);
@@ -305,80 +320,199 @@ function switchTab(tab) {
 // Handle login
 async function handleLogin(e) {
     e.preventDefault();
+    console.log('Login form submitted!');
+    
     const errorDiv = document.getElementById('loginError');
+    const submitButton = e.target.querySelector('button[type="submit"]');
+    
+    if (!errorDiv) {
+        console.error('Error div not found!');
+        alert('Error: Could not find error display element');
+        return;
+    }
+    
     errorDiv.textContent = '';
+    errorDiv.style.color = '#ef4444'; // Reset to error color
 
     const username = document.getElementById('loginUsername').value;
     const password = document.getElementById('loginPassword').value;
 
+    if (!username || !password) {
+        errorDiv.textContent = 'Please enter both username and password';
+        return;
+    }
+
+    // Show loading state
+    if (submitButton) {
+        submitButton.disabled = true;
+        submitButton.textContent = 'Logging in...';
+    }
+    errorDiv.textContent = 'Logging in...';
+    errorDiv.style.color = '#3b82f6';
+
+    console.log('Attempting login for:', username);
+    
     try {
         const response = await fetch(`${API_BASE}/login`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            credentials: 'include', // Include cookies in request
+            credentials: 'include',
             body: JSON.stringify({ username, password })
         });
 
-        const data = await response.json();
+        console.log('Login response status:', response.status, response.statusText);
+        
+        let data;
+        const contentType = response.headers.get('content-type');
+        if (contentType && contentType.includes('application/json')) {
+            data = await response.json();
+        } else {
+            const text = await response.text();
+            console.error('Non-JSON response:', text);
+            errorDiv.textContent = `Server error: ${response.status} ${response.statusText}`;
+            return;
+        }
 
-        if (response.ok) {
+        console.log('Login response data:', data);
+
+        if (response.ok && data.success) {
             // Verify session was created
             const sessionCheck = await fetch(`${API_BASE}/session`, {
                 credentials: 'include'
             });
             const sessionData = await sessionCheck.json();
             
+            console.log('Session check result:', sessionData);
+            
             if (sessionData.authenticated) {
+                console.log('Login successful, showing app');
                 showApp();
                 document.getElementById('loginForm').reset();
             } else {
                 errorDiv.textContent = 'Login failed: Session not created';
+                errorDiv.style.color = '#ef4444';
                 console.error('Session check failed:', sessionData);
             }
         } else {
             errorDiv.textContent = data.error || 'Login failed';
+            errorDiv.style.color = '#ef4444';
             console.error('Login error:', data);
         }
     } catch (error) {
-        errorDiv.textContent = 'Network error. Please try again.';
+        errorDiv.textContent = 'Network error. Please check console for details.';
+        errorDiv.style.color = '#ef4444';
         console.error('Login network error:', error);
+        console.error('Error details:', {
+            message: error.message,
+            stack: error.stack,
+            name: error.name
+        });
+    } finally {
+        // Restore button state
+        if (submitButton) {
+            submitButton.disabled = false;
+            submitButton.textContent = 'Login';
+        }
     }
 }
 
 // Handle register
 async function handleRegister(e) {
     e.preventDefault();
+    console.log('Register form submitted!');
+    
     const errorDiv = document.getElementById('registerError');
+    const submitButton = e.target.querySelector('button[type="submit"]');
+    
+    if (!errorDiv) {
+        console.error('Error div not found!');
+        alert('Error: Could not find error display element');
+        return;
+    }
+    
     errorDiv.textContent = '';
+    errorDiv.style.color = '#ef4444'; // Reset to error color
 
     const username = document.getElementById('registerUsername').value;
     const password = document.getElementById('registerPassword').value;
     const repeatPassword = document.getElementById('repeatPassword').value;
 
+    if (!username || !password || !repeatPassword) {
+        errorDiv.textContent = 'Please fill in all fields';
+        return;
+    }
+
+    if (password !== repeatPassword) {
+        errorDiv.textContent = 'Passwords do not match';
+        return;
+    }
+
+    if (password.length < 6) {
+        errorDiv.textContent = 'Password must be at least 6 characters';
+        return;
+    }
+
+    // Show loading state
+    if (submitButton) {
+        submitButton.disabled = true;
+        submitButton.textContent = 'Registering...';
+    }
+    errorDiv.textContent = 'Registering...';
+    errorDiv.style.color = '#3b82f6';
+
+    console.log('Attempting registration for:', username);
+    
     try {
         const response = await fetch(`${API_BASE}/register`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            credentials: 'include', // Include cookies in request
+            credentials: 'include',
             body: JSON.stringify({ username, password, repeatPassword })
         });
 
-        const data = await response.json();
+        console.log('Register response status:', response.status, response.statusText);
+        
+        let data;
+        const contentType = response.headers.get('content-type');
+        if (contentType && contentType.includes('application/json')) {
+            data = await response.json();
+        } else {
+            const text = await response.text();
+            console.error('Non-JSON response:', text);
+            errorDiv.textContent = `Server error: ${response.status} ${response.statusText}`;
+            return;
+        }
 
-        if (response.ok) {
+        console.log('Register response data:', data);
+
+        if (response.ok && data.success) {
             errorDiv.textContent = 'Registration successful! Please login.';
             errorDiv.style.color = '#10b981';
+            console.log('Registration successful');
             setTimeout(() => {
                 switchTab('login');
                 document.getElementById('registerForm').reset();
             }, 1500);
         } else {
             errorDiv.textContent = data.error || 'Registration failed';
+            errorDiv.style.color = '#ef4444';
             console.error('Registration error:', data);
         }
     } catch (error) {
-        errorDiv.textContent = 'Network error. Please try again.';
+        errorDiv.textContent = 'Network error. Please check console for details.';
+        errorDiv.style.color = '#ef4444';
         console.error('Registration network error:', error);
+        console.error('Error details:', {
+            message: error.message,
+            stack: error.stack,
+            name: error.name
+        });
+    } finally {
+        // Restore button state
+        if (submitButton) {
+            submitButton.disabled = false;
+            submitButton.textContent = 'Register';
+        }
     }
 }
 
