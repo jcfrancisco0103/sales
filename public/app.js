@@ -406,6 +406,9 @@ async function handleLogin(e) {
         console.log('Login response data:', data);
 
         if (response.ok && data.success) {
+            // Wait a moment for session to be saved, then verify
+            await new Promise(resolve => setTimeout(resolve, 200));
+            
             // Verify session was created
             const sessionCheck = await fetch(`${API_BASE}/session`, {
                 credentials: 'include'
@@ -413,15 +416,30 @@ async function handleLogin(e) {
             const sessionData = await sessionCheck.json();
             
             console.log('Session check result:', sessionData);
+            console.log('Cookies:', document.cookie);
             
             if (sessionData.authenticated) {
                 console.log('Login successful, showing app');
                 showApp();
                 document.getElementById('loginForm').reset();
             } else {
-                errorDiv.textContent = 'Login failed: Session not created';
-                errorDiv.style.color = '#ef4444';
-                console.error('Session check failed:', sessionData);
+                // Try one more time after a longer delay
+                await new Promise(resolve => setTimeout(resolve, 500));
+                const retryCheck = await fetch(`${API_BASE}/session`, {
+                    credentials: 'include'
+                });
+                const retryData = await retryCheck.json();
+                console.log('Retry session check:', retryData);
+                
+                if (retryData.authenticated) {
+                    console.log('Login successful on retry, showing app');
+                    showApp();
+                    document.getElementById('loginForm').reset();
+                } else {
+                    errorDiv.textContent = 'Login failed: Session not created. Please try again.';
+                    errorDiv.style.color = '#ef4444';
+                    console.error('Session check failed after retry:', retryData);
+                }
             }
         } else {
             errorDiv.textContent = data.error || 'Login failed';

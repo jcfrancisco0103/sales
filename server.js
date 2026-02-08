@@ -3,6 +3,7 @@ const express = require('express');
 const sqlite3 = require('sqlite3').verbose();
 const bcrypt = require('bcrypt');
 const session = require('express-session');
+const cookieSession = require('cookie-session');
 const bodyParser = require('body-parser');
 const path = require('path');
 
@@ -15,17 +16,38 @@ app.use(bodyParser.urlencoded({ extended: true }));
 app.use(express.static(path.join(__dirname, 'public')));
 
 // Session configuration
-app.use(session({
-  secret: process.env.SESSION_SECRET || 'sales-app-secret-key-change-in-production',
-  resave: false,
-  saveUninitialized: false,
-  cookie: { 
-    secure: process.env.NODE_ENV === 'production', // Use secure cookies in production (HTTPS)
+// On Vercel, use cookie-session for serverless compatibility (stores data in cookie, not server memory)
+const isProduction = process.env.NODE_ENV === 'production' || process.env.VERCEL;
+const useCookieSession = process.env.VERCEL || process.env.USE_COOKIE_SESSION === 'true';
+
+if (useCookieSession) {
+  // Use cookie-session for Vercel (serverless-friendly)
+  // Cookie-session stores data in the cookie itself, perfect for serverless
+  app.use(cookieSession({
+    name: 'session',
+    keys: [process.env.SESSION_SECRET || 'sales-app-secret-key-change-in-production'],
+    maxAge: 24 * 60 * 60 * 1000, // 24 hours
+    secure: isProduction,
     httpOnly: true,
-    sameSite: 'lax',
-    maxAge: 24 * 60 * 60 * 1000 // 24 hours
-  }
-}));
+    sameSite: 'lax'
+  }));
+  
+  console.log('Using cookie-session (serverless mode)');
+} else {
+  // Use express-session for local development
+  app.use(session({
+    secret: process.env.SESSION_SECRET || 'sales-app-secret-key-change-in-production',
+    resave: true,
+    saveUninitialized: true,
+    name: 'sessionId',
+    cookie: { 
+      secure: isProduction,
+      httpOnly: true,
+      sameSite: 'lax',
+      maxAge: 24 * 60 * 60 * 1000
+    }
+  }));
+}
 
 // Database setup
 // On Vercel, use /tmp directory which is writable (but not persistent)
@@ -264,11 +286,29 @@ app.post('/api/login', ensureDbInitialized, (req, res) => {
       if (match) {
         req.session.userId = user.id;
         req.session.username = user.username;
-        res.json({ success: true, username: user.username });
+        
+        console.log('Session created:', {
+          userId: req.session.userId,
+          username: req.session.username
+        });
+        
+        // Cookie-session auto-saves, express-session needs explicit save
+        if (useCookieSession) {
+          res.json({ success: true, username: user.username });
+        } else {
+          req.session.save((err) => {
+            if (err) {
+              console.error('Error saving session:', err);
+              return res.status(500).json({ error: 'Error creating session' });
+            }
+            res.json({ success: true, username: user.username });
+          });
+        }
       } else {
         res.status(401).json({ error: 'Invalid username or password' });
       }
     } catch (error) {
+      console.error('Error in login:', error);
       res.status(500).json({ error: 'Error comparing passwords' });
     }
   });
@@ -276,12 +316,23 @@ app.post('/api/login', ensureDbInitialized, (req, res) => {
 
 // Logout
 app.post('/api/logout', (req, res) => {
-  req.session.destroy();
+  if (useCookieSession) {
+    req.session = null;
+  } else {
+    req.session.destroy();
+  }
   res.json({ success: true });
 });
 
 // Check session
 app.get('/api/session', (req, res) => {
+  console.log('Session check:', {
+    sessionId: req.sessionID,
+    userId: req.session.userId,
+    username: req.session.username,
+    cookie: req.headers.cookie
+  });
+  
   if (req.session.userId) {
     res.json({ authenticated: true, username: req.session.username });
   } else {
