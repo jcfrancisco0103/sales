@@ -31,33 +31,25 @@ app.use(session({
 // On Vercel, use /tmp directory which is writable (but not persistent)
 // For local development, use ./sales.db
 const dbPath = process.env.VERCEL ? '/tmp/sales.db' : './sales.db';
-let db;
 
-try {
-  db = new sqlite3.Database(dbPath, sqlite3.OPEN_READWRITE | sqlite3.OPEN_CREATE, (err) => {
-    if (err) {
-      console.error('Error opening database:', err.message);
-      console.error('Database path:', dbPath);
-      dbInitialized = false;
-      dbInitializing = false;
-    } else {
-      console.log('Connected to SQLite database:', dbPath);
-      // Enable WAL mode for better concurrency
-      db.run('PRAGMA journal_mode = WAL;', (err) => {
-        if (err) {
-          console.log('Note: WAL mode not available (this is OK)');
-        }
-      });
-      // Initialize asynchronously to avoid blocking
-      setImmediate(() => {
-        initializeDatabase();
-      });
-    }
-  });
-} catch (error) {
-  console.error('Failed to create database connection:', error);
-  db = null;
-}
+const db = new sqlite3.Database(dbPath, sqlite3.OPEN_READWRITE | sqlite3.OPEN_CREATE, (err) => {
+  if (err) {
+    console.error('Error opening database:', err.message);
+    console.error('Database path:', dbPath);
+  } else {
+    console.log('Connected to SQLite database:', dbPath);
+    // Enable WAL mode for better concurrency
+    db.run('PRAGMA journal_mode = WAL;', (err) => {
+      if (err) {
+        console.log('Note: WAL mode not available (this is OK)');
+      }
+    });
+    // Initialize asynchronously to avoid blocking
+    setImmediate(() => {
+      initializeDatabase();
+    });
+  }
+});
 
 // Track initialization state
 let dbInitialized = false;
@@ -67,6 +59,13 @@ function initializeDatabase() {
   if (dbInitialized || dbInitializing) {
     return;
   }
+  
+  if (!db) {
+    console.error('Cannot initialize database: db connection is null');
+    dbInitializing = false;
+    return;
+  }
+  
   dbInitializing = true;
   
   console.log('Initializing database...');
@@ -146,13 +145,6 @@ function initializeDatabase() {
 
 // Ensure database is initialized before handling requests
 function ensureDbInitialized(req, res, next) {
-  if (!db) {
-    console.error('Database connection not available');
-    return res.status(500).json({ 
-      error: 'Database connection failed. Please check server logs.' 
-    });
-  }
-  
   if (dbInitialized) {
     return next();
   }
