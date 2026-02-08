@@ -57,7 +57,9 @@ document.addEventListener('DOMContentLoaded', () => {
 // Check authentication status
 async function checkAuth() {
     try {
-        const response = await fetch(`${API_BASE}/session`);
+        const response = await fetch(`${API_BASE}/session`, {
+            credentials: 'include' // Include cookies in request
+        });
         const data = await response.json();
         
         if (data.authenticated) {
@@ -313,19 +315,33 @@ async function handleLogin(e) {
         const response = await fetch(`${API_BASE}/login`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
+            credentials: 'include', // Include cookies in request
             body: JSON.stringify({ username, password })
         });
 
         const data = await response.json();
 
         if (response.ok) {
-            showApp();
-            document.getElementById('loginForm').reset();
+            // Verify session was created
+            const sessionCheck = await fetch(`${API_BASE}/session`, {
+                credentials: 'include'
+            });
+            const sessionData = await sessionCheck.json();
+            
+            if (sessionData.authenticated) {
+                showApp();
+                document.getElementById('loginForm').reset();
+            } else {
+                errorDiv.textContent = 'Login failed: Session not created';
+                console.error('Session check failed:', sessionData);
+            }
         } else {
             errorDiv.textContent = data.error || 'Login failed';
+            console.error('Login error:', data);
         }
     } catch (error) {
         errorDiv.textContent = 'Network error. Please try again.';
+        console.error('Login network error:', error);
     }
 }
 
@@ -343,6 +359,7 @@ async function handleRegister(e) {
         const response = await fetch(`${API_BASE}/register`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
+            credentials: 'include', // Include cookies in request
             body: JSON.stringify({ username, password, repeatPassword })
         });
 
@@ -357,18 +374,26 @@ async function handleRegister(e) {
             }, 1500);
         } else {
             errorDiv.textContent = data.error || 'Registration failed';
+            console.error('Registration error:', data);
         }
     } catch (error) {
         errorDiv.textContent = 'Network error. Please try again.';
+        console.error('Registration network error:', error);
     }
 }
 
 // Handle logout
 async function handleLogout() {
     try {
-        await fetch(`${API_BASE}/logout`, { method: 'POST' });
+        await fetch(`${API_BASE}/logout`, { 
+            method: 'POST',
+            credentials: 'include' // Include cookies in request
+        });
         showAuthModal();
-        document.getElementById('salesTableBody').innerHTML = '<tr><td colspan="11" class="empty-state">No sales records found</td></tr>';
+        const salesTableBody = document.getElementById('salesTableBody');
+        if (salesTableBody) {
+            salesTableBody.innerHTML = '<tr><td colspan="11" class="empty-state">No sales records found</td></tr>';
+        }
     } catch (error) {
         console.error('Logout error:', error);
     }
@@ -377,7 +402,9 @@ async function handleLogout() {
 // Load available months
 async function loadMonths() {
     try {
-        const response = await fetch(`${API_BASE}/sales/months`);
+        const response = await fetch(`${API_BASE}/sales/months`, {
+            credentials: 'include'
+        });
         const months = await response.json();
 
         const select = document.getElementById('monthFilter');
@@ -520,7 +547,9 @@ async function loadSales() {
         // Always fetch all sales for client-side filtering
         // Month filter will be applied client-side along with search
 
-        const response = await fetch(`${API_BASE}/sales?${params}`);
+        const response = await fetch(`${API_BASE}/sales?${params}`, {
+            credentials: 'include'
+        });
         const sales = await response.json();
 
         // Store all sales for filtering
@@ -595,7 +624,9 @@ async function loadStatistics() {
             params.append('year', currentYear);
         }
 
-        const response = await fetch(`${API_BASE}/statistics?${params}`);
+        const response = await fetch(`${API_BASE}/statistics?${params}`, {
+            credentials: 'include'
+        });
         const stats = await response.json();
 
         // Update month display
@@ -1008,6 +1039,7 @@ async function handleSaleSubmit(e) {
         const response = await fetch(url, {
             method,
             headers: { 'Content-Type': 'application/json' },
+            credentials: 'include',
             body: JSON.stringify(saleData)
         });
 
@@ -1035,7 +1067,9 @@ async function handleSaleSubmit(e) {
 // Edit sale
 async function editSale(id) {
     try {
-        const response = await fetch(`${API_BASE}/sales`);
+        const response = await fetch(`${API_BASE}/sales`, {
+            credentials: 'include'
+        });
         const sales = await response.json();
         const sale = sales.find(s => s.id === id);
         
@@ -1055,7 +1089,8 @@ async function renewSale(id) {
 
     try {
         const response = await fetch(`${API_BASE}/sales/${id}/renew`, {
-            method: 'POST'
+            method: 'POST',
+            credentials: 'include'
         });
 
         const data = await response.json();
@@ -1082,7 +1117,8 @@ async function deleteSale(id) {
 
     try {
         const response = await fetch(`${API_BASE}/sales/${id}`, {
-            method: 'DELETE'
+            method: 'DELETE',
+            credentials: 'include'
         });
 
         const data = await response.json();
