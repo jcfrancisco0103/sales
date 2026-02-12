@@ -2,11 +2,9 @@ require('dotenv').config();
 const express = require('express');
 const sqlite3 = require('sqlite3').verbose();
 const bcrypt = require('bcrypt');
-const session = require('express-session');
 const cookieParser = require('cookie-parser');
 const bodyParser = require('body-parser');
 const path = require('path');
-const crypto = require('crypto');
 
 const app = express();
 const PORT = process.env.PORT || 3020;
@@ -22,27 +20,54 @@ const isProduction = process.env.NODE_ENV === 'production' || process.env.VERCEL
 
 app.use(cookieParser(SESSION_SECRET));
 
-// Session middleware - store user data in signed cookie
+// Session middleware - store user data in signed cookie (works with Vercel serverless)
 app.use((req, res, next) => {
-  req.session = req.signedCookies.sessionData ? JSON.parse(req.signedCookies.sessionData) : {};
+  try {
+    // Parse session from signed cookie
+    if (req.signedCookies && req.signedCookies.sessionData) {
+      try {
+        req.session = JSON.parse(req.signedCookies.sessionData);
+      } catch (parseError) {
+        console.error('Error parsing session cookie:', parseError);
+        req.session = {};
+      }
+    } else {
+      req.session = {};
+    }
+  } catch (error) {
+    console.error('Error reading session:', error);
+    req.session = {};
+  }
   
   // Helper to save session
   req.saveSession = (data) => {
-    const cookieOptions = {
-      httpOnly: true,
-      secure: isProduction,
-      sameSite: 'lax',
-      maxAge: 24 * 60 * 60 * 1000, // 24 hours
-      signed: true
-    };
-    res.cookie('sessionData', JSON.stringify(data), cookieOptions);
-    req.session = data;
+    try {
+      const cookieOptions = {
+        httpOnly: true,
+        secure: isProduction,
+        sameSite: 'lax',
+        maxAge: 24 * 60 * 60 * 1000, // 24 hours
+        signed: true
+      };
+      res.cookie('sessionData', JSON.stringify(data), cookieOptions);
+      req.session = data;
+    } catch (error) {
+      console.error('Error saving session:', error);
+    }
   };
   
   // Helper to destroy session
   req.destroySession = () => {
-    res.clearCookie('sessionData');
-    req.session = {};
+    try {
+      res.clearCookie('sessionData', {
+        httpOnly: true,
+        secure: isProduction,
+        sameSite: 'lax'
+      });
+      req.session = {};
+    } catch (error) {
+      console.error('Error destroying session:', error);
+    }
   };
   
   next();
@@ -116,6 +141,7 @@ function initializeDatabase() {
       ram TEXT NOT NULL,
       disk TEXT NOT NULL,
       amount REAL NOT NULL,
+      promo TEXT,
       payment_method TEXT NOT NULL,
       status TEXT NOT NULL CHECK(status IN ('Paid', 'Pending')),
       created_by INTEGER NOT NULL,
@@ -127,6 +153,14 @@ function initializeDatabase() {
         dbInitializing = false;
         return;
       }
+      
+      // Add promo column if it doesn't exist (for existing databases)
+      db.run(`ALTER TABLE sales ADD COLUMN promo TEXT`, (alterErr) => {
+        // Ignore error if column already exists
+        if (alterErr && !alterErr.message.includes('duplicate column name')) {
+          console.log('Note: promo column may already exist or could not be added:', alterErr.message);
+        }
+      });
       
       // Try to add columns (ignore if they exist)
       db.run(`ALTER TABLE sales ADD COLUMN date_expiry TEXT`, () => {});
@@ -425,6 +459,7 @@ app.post('/api/sales/auto', requireApiKey, (req, res) => {
     ram,
     disk,
     amount,
+    promo,
     payment_method,
     status
   } = req.body;
@@ -457,9 +492,9 @@ app.post('/api/sales/auto', requireApiKey, (req, res) => {
     }
     
     db.run(
-      `INSERT INTO sales (date_bought, duration, date_expiry, customer_name, plan, cpu, ram, disk, amount, payment_method, status, created_by)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      [date_bought, duration || null, date_expiry || null, customer_name, plan, cpu, ram, disk, amount, payment_method, status, systemUser.id],
+      `INSERT INTO sales (date_bought, duration, date_expiry, customer_name, plan, cpu, ram, disk, amount, promo, payment_method, status, created_by)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [date_bought, duration || null, date_expiry || null, customer_name, plan, cpu, ram, disk, amount, promo || null, payment_method, status, systemUser.id],
     function(err) {
       if (err) {
         console.error('Error creating automated sale:', err);
@@ -489,6 +524,7 @@ app.post('/api/sales', requireAuth, (req, res) => {
     ram,
     disk,
     amount,
+    promo,
     payment_method,
     status
   } = req.body;
@@ -510,9 +546,9 @@ app.post('/api/sales', requireAuth, (req, res) => {
   }
 
   db.run(
-    `INSERT INTO sales (date_bought, duration, date_expiry, customer_name, plan, cpu, ram, disk, amount, payment_method, status, created_by)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-    [date_bought, duration || null, date_expiry || null, customer_name, plan, cpu, ram, disk, amount, payment_method, status, req.session.userId],
+    `INSERT INTO sales (date_bought, duration, date_expiry, customer_name, plan, cpu, ram, disk, amount, promo, payment_method, status, created_by)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    [date_bought, duration || null, date_expiry || null, customer_name, plan, cpu, ram, disk, amount, promo || null, payment_method, status, req.session.userId],
     function(err) {
       if (err) {
         console.error('Error creating sale:', err);
@@ -542,6 +578,7 @@ app.put('/api/sales/:id', requireAuth, (req, res) => {
     ram,
     disk,
     amount,
+    promo,
     payment_method,
     status
   } = req.body;
@@ -560,8 +597,8 @@ app.put('/api/sales/:id', requireAuth, (req, res) => {
 
   db.run(
     `UPDATE sales SET date_bought = ?, duration = ?, date_expiry = ?, customer_name = ?, plan = ?, cpu = ?, ram = ?, disk = ?, 
-     amount = ?, payment_method = ?, status = ? WHERE id = ?`,
-    [date_bought, duration || null, date_expiry || null, customer_name, plan, cpu, ram, disk, amount, payment_method, status, id],
+     amount = ?, promo = ?, payment_method = ?, status = ? WHERE id = ?`,
+    [date_bought, duration || null, date_expiry || null, customer_name, plan, cpu, ram, disk, amount, promo || null, payment_method, status, id],
     function(err) {
       if (err) {
         console.error('Error updating sale:', err);

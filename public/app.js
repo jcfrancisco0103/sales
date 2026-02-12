@@ -13,6 +13,38 @@ let searchQuery = ''; // Store search query
 
 // Plan definitions
 const PLAN_DATA = {
+    // Enterprise Plans
+    'Starter': {
+        amount: 149,
+        ram: '3GB',
+        cpu: '2 vCores',
+        disk: '15GB'
+    },
+    'Standard': {
+        amount: 249,
+        ram: '5GB',
+        cpu: '3 vCores',
+        disk: '25GB'
+    },
+    'Plus': {
+        amount: 349,
+        ram: '7GB',
+        cpu: '4 vCores',
+        disk: '35GB'
+    },
+    'Pro': {
+        amount: 499,
+        ram: '10GB',
+        cpu: '6 vCores',
+        disk: '50GB'
+    },
+    'Elite': {
+        amount: 649,
+        ram: '14GB',
+        cpu: '8 vCores',
+        disk: '70GB'
+    },
+    // Shared Plans
     'Pig Plan': {
         amount: 85,
         ram: '2GB',
@@ -255,6 +287,31 @@ function setupEventListeners() {
     const planSelect = document.getElementById('planSelect');
     if (planSelect) {
         planSelect.addEventListener('change', handlePlanSelection);
+    }
+
+    // Promo code handler
+    const promoInput = document.getElementById('promo');
+    if (promoInput) {
+        promoInput.addEventListener('input', handlePromoChange);
+        promoInput.addEventListener('blur', handlePromoChange);
+    }
+
+    // Amount input handler for custom plans (to update originalAmount)
+    const amountInput = document.getElementById('amount');
+    if (amountInput) {
+        amountInput.addEventListener('change', () => {
+            // If amount is not readonly (custom plan), update originalAmount
+            if (!amountInput.hasAttribute('readonly')) {
+                const currentAmount = parseFloat(amountInput.value) || 0;
+                if (currentAmount > 0) {
+                    originalAmount = currentAmount;
+                    // Recalculate promo if exists
+                    if (promoInput && promoInput.value) {
+                        handlePromoChange();
+                    }
+                }
+            }
+        });
     }
 
     // Auto-format CPU, RAM, and DISK fields for custom plan
@@ -738,7 +795,7 @@ function displaySales(sales) {
     const tbody = document.getElementById('salesTableBody');
     
     if (sales.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="12" class="empty-state">No sales records found</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="13" class="empty-state">No sales records found</td></tr>';
         return;
     }
 
@@ -752,6 +809,7 @@ function displaySales(sales) {
             <td>${escapeHtml(sale.ram)}</td>
             <td>${escapeHtml(sale.disk)}</td>
             <td>₱${formatCurrency(sale.amount)}</td>
+            <td>${sale.promo ? escapeHtml(sale.promo) : '-'}</td>
             <td>${escapeHtml(sale.payment_method)}</td>
             <td><span class="status-badge ${sale.status.toLowerCase()}">${sale.status}</span></td>
             <td>${escapeHtml(sale.created_by_username)}</td>
@@ -806,7 +864,7 @@ function displaySales(sales) {
     const tbody = document.getElementById('salesTableBody');
     
     if (sales.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="12" class="empty-state">No sales records found</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="13" class="empty-state">No sales records found</td></tr>';
         return;
     }
 
@@ -820,6 +878,7 @@ function displaySales(sales) {
                 <td>${escapeHtml(sale.ram)}</td>
                 <td>${escapeHtml(sale.disk)}</td>
                 <td>₱${formatCurrency(sale.amount)}</td>
+                <td>${sale.promo ? escapeHtml(sale.promo) : '-'}</td>
                 <td>${escapeHtml(sale.payment_method)}</td>
                 <td><span class="status-badge ${sale.status.toLowerCase()}">${sale.status}</span></td>
                 <td>${escapeHtml(sale.created_by_username)}</td>
@@ -936,6 +995,9 @@ function formatDISK(e) {
     }
 }
 
+// Store original amount for promo calculation
+let originalAmount = 0;
+
 // Handle plan selection
 function handlePlanSelection() {
     const planSelect = document.getElementById('planSelect');
@@ -944,6 +1006,7 @@ function handlePlanSelection() {
     const ramInput = document.getElementById('ram');
     const diskInput = document.getElementById('disk');
     const amountInput = document.getElementById('amount');
+    const promoInput = document.getElementById('promo');
 
     if (selectedPlan === 'Custom Plan') {
         // Enable manual input for custom plan specs
@@ -959,7 +1022,12 @@ function handlePlanSelection() {
         ramInput.value = '';
         diskInput.value = '';
         amountInput.value = '';
-    } else if (selectedPlan && PLAN_DATA[selectedPlan]) {
+        originalAmount = 0;
+        // Recalculate promo if exists
+        if (promoInput && promoInput.value) {
+            handlePromoChange();
+        }
+    } else if (selectedPlan && PLAN_DATA[selectedPlan] && PLAN_DATA[selectedPlan].amount !== 0) {
         // Auto-fill fields for predefined plans
         const planData = PLAN_DATA[selectedPlan];
         cpuInput.value = planData.cpu;
@@ -971,8 +1039,13 @@ function handlePlanSelection() {
         diskInput.value = planData.disk;
         diskInput.setAttribute('readonly', 'readonly');
         diskInput.placeholder = '';
-        amountInput.value = planData.amount;
+        originalAmount = planData.amount;
+        amountInput.value = originalAmount;
         amountInput.setAttribute('readonly', 'readonly');
+        // Recalculate promo if exists
+        if (promoInput && promoInput.value) {
+            handlePromoChange();
+        }
     } else {
         // No plan selected - clear all fields
         cpuInput.value = '';
@@ -986,6 +1059,68 @@ function handlePlanSelection() {
         diskInput.placeholder = '';
         amountInput.value = '';
         amountInput.removeAttribute('readonly');
+        originalAmount = 0;
+        // Clear promo calculation
+        if (promoInput && promoInput.value) {
+            handlePromoChange();
+        }
+    }
+}
+
+// Handle promo code change
+function handlePromoChange() {
+    const promoInput = document.getElementById('promo');
+    const amountInput = document.getElementById('amount');
+    
+    if (!promoInput || !amountInput) return;
+    
+    const promoValue = promoInput.value.trim();
+    
+    // If no promo, restore original amount
+    if (!promoValue) {
+        if (originalAmount > 0) {
+            amountInput.value = originalAmount;
+        }
+        return;
+    }
+    
+    // Get current base amount (either from originalAmount or from amountInput if it's not readonly)
+    let baseAmount = originalAmount;
+    if (baseAmount === 0 && !amountInput.hasAttribute('readonly')) {
+        baseAmount = parseFloat(amountInput.value) || 0;
+    }
+    
+    if (baseAmount === 0) {
+        return; // Can't apply discount if no base amount
+    }
+    
+    let discount = 0;
+    
+    // Check if promo is a percentage (ends with %)
+    if (promoValue.endsWith('%')) {
+        const percentage = parseFloat(promoValue.replace('%', ''));
+        if (!isNaN(percentage) && percentage >= 0 && percentage <= 100) {
+            discount = (baseAmount * percentage) / 100;
+        }
+    } else {
+        // Treat as fixed discount amount
+        const fixedDiscount = parseFloat(promoValue);
+        if (!isNaN(fixedDiscount) && fixedDiscount >= 0) {
+            discount = Math.min(fixedDiscount, baseAmount); // Don't allow negative amounts
+        }
+    }
+    
+    // Calculate final amount
+    const finalAmount = Math.max(0, baseAmount - discount);
+    
+    // Update amount field (temporarily remove readonly if needed)
+    const wasReadonly = amountInput.hasAttribute('readonly');
+    if (wasReadonly) {
+        amountInput.removeAttribute('readonly');
+    }
+    amountInput.value = finalAmount.toFixed(2);
+    if (wasReadonly) {
+        amountInput.setAttribute('readonly', 'readonly');
     }
 }
 
@@ -1104,6 +1239,12 @@ function openSaleModal(sale = null) {
         document.getElementById('paymentMethod').value = sale.payment_method;
         document.getElementById('status').value = sale.status;
         
+        // Set promo if exists
+        const promoInput = document.getElementById('promo');
+        if (promoInput && sale.promo) {
+            promoInput.value = sale.promo;
+        }
+        
         // Handle plan selection
         const planSelect = document.getElementById('planSelect');
         const planName = sale.plan;
@@ -1113,6 +1254,13 @@ function openSaleModal(sale = null) {
             planSelect.value = planName;
             // Apply readonly state and auto-fill for predefined plans
             handlePlanSelection();
+            // For editing, we need to set originalAmount to the plan's base amount
+            // and then apply promo if it exists
+            if (sale.promo) {
+                setTimeout(() => {
+                    handlePromoChange();
+                }, 100);
+            }
         } else {
             // It's a custom plan or unknown plan - set to Custom Plan
             planSelect.value = 'Custom Plan';
@@ -1122,7 +1270,15 @@ function openSaleModal(sale = null) {
             document.getElementById('cpu').value = sale.cpu;
             document.getElementById('ram').value = sale.ram;
             document.getElementById('disk').value = sale.disk;
+            // For custom plans, we need to figure out the original amount
+            // If there's a promo, we'll need to reverse calculate, but for now just set the amount
+            originalAmount = parseFloat(sale.amount) || 0;
             document.getElementById('amount').value = sale.amount;
+            if (sale.promo) {
+                setTimeout(() => {
+                    handlePromoChange();
+                }, 100);
+            }
         }
         
         // Always recalculate expiry date when editing to ensure it's up to date
@@ -1230,6 +1386,9 @@ async function handleSaleSubmit(e) {
     // Get plan name directly from dropdown
     const planName = document.getElementById('planSelect').value;
 
+    const promoInput = document.getElementById('promo');
+    const promoValue = promoInput ? promoInput.value.trim() : '';
+
     const saleData = {
         date_bought: dateBought,
         duration: duration,
@@ -1241,7 +1400,8 @@ async function handleSaleSubmit(e) {
         disk: document.getElementById('disk').value,
         amount: parseFloat(document.getElementById('amount').value),
         payment_method: document.getElementById('paymentMethod').value,
-        status: document.getElementById('status').value
+        status: document.getElementById('status').value,
+        promo: promoValue || null
     };
     
     // Debug: log the data being sent (can remove this later)
