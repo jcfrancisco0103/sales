@@ -10,6 +10,7 @@ let currentMonth = '';
 let currentYear = '';
 let allSales = []; // Store all sales for filtering
 let searchQuery = ''; // Store search query
+let currentSearchQuery = ''; // Store current search query for filtering
 
 // Plan definitions
 const PLAN_DATA = {
@@ -820,7 +821,14 @@ function handleCustomerSearch(e) {
 
 // Filter and display sales based on month filter and search query
 function filterAndDisplaySales() {
-    let filteredSales = [...allSalesData];
+    // Use allSales which is populated by loadSales()
+    if (!allSales || allSales.length === 0) {
+        // If no sales loaded yet, try to load them
+        loadSales();
+        return;
+    }
+    
+    let filteredSales = [...allSales];
 
     // Apply month filter if set
     if (currentMonth && currentYear) {
@@ -892,8 +900,8 @@ async function loadSales() {
         // Store all sales for filtering
         allSales = sales;
 
-        // Apply search filter
-        displaySales(filterSales(sales));
+        // Apply both month and search filters
+        filterAndDisplaySales();
 
     } catch (error) {
         console.error('Error loading sales:', error);
