@@ -121,6 +121,13 @@
         <!-- Home Tab Content -->
         <div id="homeTab" class="tab-content active">
             <div class="container">
+                <!-- Month Filter for Home Page -->
+                <div class="home-month-filter" style="margin-bottom: 2rem; display: flex; align-items: center; gap: 1rem; justify-content: flex-end;">
+                    <label for="homeMonthFilter" style="color: var(--text-secondary); font-weight: 500;">Filter by Month:</label>
+                    <select id="homeMonthFilter" style="padding: 0.75rem 1rem; border: 1px solid var(--border-color); border-radius: 8px; background: var(--nebula-card); color: var(--text-primary); font-size: 1rem; min-width: 200px; cursor: pointer; transition: all 0.3s ease;" onfocus="this.style.borderColor='var(--nebula-purple)'; this.style.boxShadow='0 0 10px rgba(139, 92, 246, 0.3)'" onblur="this.style.borderColor='var(--border-color)'; this.style.boxShadow='none'">
+                        <option value="">All Time</option>
+                    </select>
+                </div>
                 <!-- Statistics Cards -->
                 <div class="stats-grid" style="grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));">
                     <div class="stat-card">

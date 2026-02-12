@@ -160,15 +160,22 @@ function switchMainTab(tabName) {
             if (homeTab) {
                 homeTab.classList.add('active');
             }
-            // Hide month filter when on home tab
+            // Hide header month filter when on home tab (we have one on the page)
             const monthFilterContainer = document.getElementById('monthFilterContainer');
             if (monthFilterContainer) {
                 monthFilterContainer.style.display = 'none';
             }
+            // Reset home month filter to "All Time" when switching to home tab
+            const homeMonthFilter = document.getElementById('homeMonthFilter');
+            if (homeMonthFilter) {
+                homeMonthFilter.value = '';
+            }
             // Reset month filter to show all time statistics
             currentMonth = '';
             currentYear = '';
-            // Load statistics for home page (all time)
+            // Load months for home page filter
+            loadHomeMonths();
+            // Load statistics for home page (all time initially)
             loadStatistics();
         } else if (tabName === 'sales') {
             const salesTab = document.getElementById('salesTab');
@@ -247,6 +254,12 @@ function setupEventListeners() {
     const monthFilter = document.getElementById('monthFilter');
     if (monthFilter) {
         monthFilter.addEventListener('change', handleMonthFilter);
+    }
+
+    // Home page month filter
+    const homeMonthFilter = document.getElementById('homeMonthFilter');
+    if (homeMonthFilter) {
+        homeMonthFilter.addEventListener('change', handleHomeMonthFilter);
     }
 
     // Navigation tabs
@@ -705,6 +718,31 @@ async function loadMonths() {
     }
 }
 
+// Load available months for home page filter
+async function loadHomeMonths() {
+    try {
+        const response = await fetch(`${API_BASE}/sales/months`, {
+            credentials: 'include'
+        });
+        const months = await response.json();
+
+        const select = document.getElementById('homeMonthFilter');
+        if (!select) return;
+        
+        select.innerHTML = '<option value="">All Time</option>';
+
+        months.forEach(month => {
+            const date = new Date(`${month.year_month}-01`);
+            const option = document.createElement('option');
+            option.value = `${month.month}-${month.year}`;
+            option.textContent = date.toLocaleDateString('en-US', { year: 'numeric', month: 'long' });
+            select.appendChild(option);
+        });
+    } catch (error) {
+        console.error('Error loading home months:', error);
+    }
+}
+
 // Switch between pages
 function switchPage(page) {
     // Update nav tabs
@@ -757,6 +795,21 @@ function handleMonthFilter(e) {
     }
     // Apply filters (month + search) and display
     filterAndDisplaySales();
+}
+
+// Handle home page month filter
+function handleHomeMonthFilter(e) {
+    const value = e.target.value;
+    if (value) {
+        const [month, year] = value.split('-');
+        currentMonth = month;
+        currentYear = year;
+    } else {
+        currentMonth = '';
+        currentYear = '';
+    }
+    // Reload statistics with the selected month
+    loadStatistics();
 }
 
 // Handle customer search
