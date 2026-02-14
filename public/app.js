@@ -14,73 +14,43 @@ let currentSearchQuery = ''; // Store current search query for filtering
 
 // Plan definitions
 const PLAN_DATA = {
-    // Enterprise Plans
-    'Starter': {
-        amount: 149,
-        ram: '3GB',
-        cpu: '2 vCores',
+    // Budget Dedicated Plans
+    'Chicken Plan': {
+        amount: 95,
+        ram: '2GB',
+        cpu: '1 vCore',
         disk: '15GB'
     },
-    'Standard': {
-        amount: 249,
-        ram: '5GB',
+    'Pig Plan': {
+        amount: 199,
+        ram: '4GB',
+        cpu: '2 vCores',
+        disk: '30GB'
+    },
+    'Wolf Plan': {
+        amount: 299,
+        ram: '6GB',
         cpu: '3 vCores',
-        disk: '25GB'
+        disk: '45GB'
     },
-    'Plus': {
-        amount: 349,
-        ram: '7GB',
-        cpu: '4 vCores',
-        disk: '35GB'
-    },
-    'Pro': {
+    // Enterprise Dedicated Plans
+    'Zombie Plan': {
         amount: 499,
-        ram: '10GB',
-        cpu: '6 vCores',
-        disk: '50GB'
-    },
-    'Elite': {
-        amount: 649,
-        ram: '14GB',
-        cpu: '8 vCores',
+        ram: '8GB',
+        cpu: '4 vCores',
         disk: '70GB'
     },
-    // Shared Plans
-    'Pig Plan': {
-        amount: 85,
-        ram: '2GB',
-        cpu: '100%',
-        disk: '5GB'
-    },
-    'Sheep Plan': {
-        amount: 140,
-        ram: '4GB',
-        cpu: '100%',
-        disk: '10GB'
-    },
-    'Cow Plan': {
-        amount: 225,
-        ram: '6GB',
-        cpu: '150%',
-        disk: '20GB'
-    },
-    'Creeper Plan': {
-        amount: 379,
-        ram: '8GB',
-        cpu: '150%',
-        disk: '20GB'
-    },
-    'Zombie Plan': {
-        amount: 459,
-        ram: '10GB',
-        cpu: '200%',
-        disk: '35GB'
-    },
     'Skeleton Plan': {
-        amount: 549,
+        amount: 699,
         ram: '12GB',
-        cpu: '250%',
-        disk: '40GB'
+        cpu: '5 vCores',
+        disk: '100GB'
+    },
+    'Ender Dragon Plan': {
+        amount: 999,
+        ram: '16GB',
+        cpu: '6 vCores',
+        disk: '150GB'
     }
 };
 
