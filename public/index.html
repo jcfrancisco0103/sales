@@ -4,6 +4,9 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>AstryxNodes - Sales Management System</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="styles.css">
     <style>
         /* Tab Navigation Styles */
@@ -153,33 +156,25 @@
                     </div>
                 </div>
 
-                <!-- VPS Expenses -->
+                <!-- VDS Expenses -->
                 <div class="vps-expenses-section">
-                    <h2>VPS Expenses</h2>
+                    <h2>VDS Expenses</h2>
                     <div class="vps-grid">
                         <div class="vps-item">
                             <span class="vps-label">Panel</span>
                             <span class="vps-amount">₱679.00</span>
                         </div>
                         <div class="vps-item">
-                            <span class="vps-label">Node 1</span>
-                            <span class="vps-amount">₱3,389.00</span>
+                            <span class="vps-label">VDS 1</span>
+                            <span class="vps-amount">₱2,000.00</span>
                         </div>
                         <div class="vps-item">
-                            <span class="vps-label">Node 2</span>
-                            <span class="vps-amount">₱3,389.00</span>
-                        </div>
-                        <div class="vps-item">
-                            <span class="vps-label">Node 3</span>
-                            <span class="vps-amount">₱3,389.00</span>
-                        </div>
-                        <div class="vps-item">
-                            <span class="vps-label">Node 4</span>
-                            <span class="vps-amount">₱3,389.00</span>
+                            <span class="vps-label">VDS 2</span>
+                            <span class="vps-amount">₱2,000.00</span>
                         </div>
                         <div class="vps-total">
-                            <span class="vps-total-label">Total VPS Expenses</span>
-                            <span class="vps-total-amount" id="vpsTotal">₱14,235.00</span>
+                            <span class="vps-total-label">Total VDS Expenses</span>
+                            <span class="vps-total-amount" id="vpsTotal">₱4,679.00</span>
                         </div>
                     </div>
                 </div>
@@ -197,8 +192,8 @@
                             <p class="salary-value" id="developerSalary">₱0.00</p>
                         </div>
                         <div class="salary-card">
-                            <h3>Advertiser (25%)</h3>
-                            <p class="salary-value" id="advertiserSalary">₱0.00</p>
+                            <h3>Staff (25%)</h3>
+                            <p class="salary-value" id="staffSalary">₱0.00</p>
                         </div>
                     </div>
                 </div>
@@ -209,9 +204,9 @@
         <div id="salesTab" class="tab-content">
             <div class="container">
                 <!-- Action Bar with Search -->
-                <div class="action-bar" style="display: flex; justify-content: space-between; align-items: center; gap: 1rem; flex-wrap: wrap;">
-                    <div style="flex: 1; min-width: 250px; max-width: 400px;">
-                        <input type="text" id="customerSearch" placeholder="🔍 Search by customer name..." style="width: 100%; padding: 0.75rem; border: 1px solid var(--border-color); border-radius: 8px; background: var(--nebula-card); color: var(--text-primary); font-size: 1rem; transition: all 0.3s ease;" onfocus="this.style.borderColor='var(--nebula-purple)'; this.style.boxShadow='0 0 10px rgba(139, 92, 246, 0.3)'" onblur="this.style.borderColor='var(--border-color)'; this.style.boxShadow='none'">
+                <div class="action-bar">
+                    <div class="search-container">
+                        <input type="text" id="customerSearch" class="search-input" placeholder="Search by customer name...">
                     </div>
                     <button id="addSaleBtn" class="btn btn-primary">+ Add New Sale</button>
                 </div>
@@ -225,9 +220,6 @@
                                 <th>Date Expiry</th>
                                 <th>Customer Name</th>
                                 <th>Plan</th>
-                                <th>CPU</th>
-                                <th>RAM</th>
-                                <th>DISK</th>
                                 <th>Amount</th>
                                 <th>Promo</th>
                                 <th>Payment Method</th>
@@ -238,7 +230,7 @@
                         </thead>
                         <tbody id="salesTableBody">
                             <tr>
-                                <td colspan="13" class="empty-state">No sales records found</td>
+                                <td colspan="10" class="empty-state">No sales records found</td>
                             </tr>
                         </tbody>
                     </table>

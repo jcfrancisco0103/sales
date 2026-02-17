@@ -826,7 +826,7 @@ function displaySales(sales) {
     const tbody = document.getElementById('salesTableBody');
     
     if (sales.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="13" class="empty-state">No sales records found</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="10" class="empty-state">No sales records found</td></tr>';
         return;
     }
 
@@ -836,9 +836,6 @@ function displaySales(sales) {
             <td>${sale.date_expiry ? formatDate(sale.date_expiry) : '-'}</td>
             <td>${escapeHtml(sale.customer_name)}</td>
             <td>${escapeHtml(sale.plan)}</td>
-            <td>${escapeHtml(sale.cpu)}</td>
-            <td>${escapeHtml(sale.ram)}</td>
-            <td>${escapeHtml(sale.disk)}</td>
             <td>₱${formatCurrency(sale.amount)}</td>
             <td>${sale.promo ? escapeHtml(sale.promo) : '-'}</td>
             <td>${escapeHtml(sale.payment_method)}</td>
@@ -895,7 +892,7 @@ function displaySales(sales) {
     const tbody = document.getElementById('salesTableBody');
     
     if (sales.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="13" class="empty-state">No sales records found</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="10" class="empty-state">No sales records found</td></tr>';
         return;
     }
 
@@ -905,9 +902,6 @@ function displaySales(sales) {
                 <td>${sale.date_expiry ? formatDate(sale.date_expiry) : '-'}</td>
                 <td>${escapeHtml(sale.customer_name)}</td>
                 <td>${escapeHtml(sale.plan)}</td>
-                <td>${escapeHtml(sale.cpu)}</td>
-                <td>${escapeHtml(sale.ram)}</td>
-                <td>${escapeHtml(sale.disk)}</td>
                 <td>₱${formatCurrency(sale.amount)}</td>
                 <td>${sale.promo ? escapeHtml(sale.promo) : '-'}</td>
                 <td>${escapeHtml(sale.payment_method)}</td>
@@ -963,7 +957,7 @@ async function loadStatistics() {
         document.getElementById('pendingAmount').textContent = `₱${formatCurrency(stats.pendingAmount)}`;
         document.getElementById('ownerSalary').textContent = `₱${formatCurrency(stats.salaries.owner)}`;
         document.getElementById('developerSalary').textContent = `₱${formatCurrency(stats.salaries.developer)}`;
-        document.getElementById('advertiserSalary').textContent = `₱${formatCurrency(stats.salaries.advertiser)}`;
+        document.getElementById('staffSalary').textContent = `₱${formatCurrency(stats.salaries.staff)}`;
     } catch (error) {
         console.error('Error loading statistics:', error);
     }
