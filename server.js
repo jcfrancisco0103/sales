@@ -4,6 +4,8 @@ const sqlite3 = require('sqlite3').verbose();
 const bcrypt = require('bcrypt');
 const cookieParser = require('cookie-parser');
 const bodyParser = require('body-parser');
+const multer = require('multer');
+const XLSX = require('xlsx');
 const path = require('path');
 
 const app = express();
@@ -386,16 +388,41 @@ app.get('/api/sales', requireAuth, (req, res) => {
       console.error('Error fetching sales:', err);
       return res.status(500).json({ error: 'Error fetching sales' });
     }
-    // Log first row to debug
+    
+    // Only log if there are sales or if it's an error (reduce spam)
     if (rows.length > 0) {
-      console.log('Sample sale data returned:', {
-        id: rows[0].id,
-        date_bought: rows[0].date_bought,
-        date_expiry: rows[0].date_expiry,
-        duration: rows[0].duration
-      });
+      console.log(`Fetched ${rows.length} sales records`);
     }
-    res.json(rows);
+    // Don't log empty results to reduce terminal spam
+    
+    res.json(rows || []);
+  });
+});
+
+// Diagnostic endpoint to check database state
+app.get('/api/diagnostic', requireAuth, (req, res) => {
+  // Check total sales count
+  db.get('SELECT COUNT(*) as count FROM sales', [], (err, row) => {
+    if (err) {
+      return res.status(500).json({ error: 'Error checking database' });
+    }
+    
+    // Check sales with valid user references
+    db.get(`
+      SELECT COUNT(*) as count 
+      FROM sales s 
+      JOIN users u ON s.created_by = u.id
+    `, [], (err, validRow) => {
+      if (err) {
+        return res.status(500).json({ error: 'Error checking valid sales' });
+      }
+      
+      res.json({
+        totalSalesInDatabase: row.count || 0,
+        validSalesWithUsers: validRow.count || 0,
+        orphanedSales: (row.count || 0) - (validRow.count || 0)
+      });
+    });
   });
 });
 
@@ -424,20 +451,27 @@ app.get('/api/statistics', requireAuth, (req, res) => {
 
   db.get(query, params, (err, row) => {
     if (err) {
+      console.error('Error fetching statistics:', err);
       return res.status(500).json({ error: 'Error fetching statistics' });
     }
 
-    const totalAmount = row.total_amount || 0;
+    // Ensure we have valid row data, default to 0 if null
+    const totalSales = row && row.total_sales ? parseInt(row.total_sales) : 0;
+    const totalAmount = row && row.total_amount ? parseFloat(row.total_amount) : 0;
+    const paidAmount = row && row.paid_amount ? parseFloat(row.paid_amount) : 0;
+    const pendingAmount = row && row.pending_amount ? parseFloat(row.pending_amount) : 0;
+    const paidSales = row && row.paid_sales ? parseInt(row.paid_sales) : 0;
+
     const ownerSalary = totalAmount * 0.35;
     const developerSalary = totalAmount * 0.35;
     const staffSalary = totalAmount * 0.25;
 
     res.json({
-      totalSales: row.total_sales || 0,
+      totalSales: totalSales,
       totalAmount: totalAmount,
-      paidAmount: row.paid_amount || 0,
-      pendingAmount: row.pending_amount || 0,
-      paidSales: row.paid_sales || 0,
+      paidAmount: paidAmount,
+      pendingAmount: pendingAmount,
+      paidSales: paidSales,
       salaries: {
         owner: ownerSalary,
         developer: developerSalary,
@@ -726,6 +760,220 @@ app.get('/api/sales/months', requireAuth, (req, res) => {
       res.json(rows);
     }
   );
+});
+
+// Configure multer for file uploads
+const upload = multer({ 
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 10 * 1024 * 1024 }, // 10MB limit
+  fileFilter: (req, file, cb) => {
+    const allowedTypes = [
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', // .xlsx
+      'application/vnd.ms-excel', // .xls
+      'text/csv' // .csv
+    ];
+    if (allowedTypes.includes(file.mimetype) || file.originalname.match(/\.(xlsx|xls|csv)$/i)) {
+      cb(null, true);
+    } else {
+      cb(new Error('Invalid file type. Only Excel (.xlsx, .xls) and CSV files are allowed.'));
+    }
+  }
+});
+
+// Export sales to Excel
+app.get('/api/sales/export', requireAuth, (req, res) => {
+  console.log('Export endpoint called');
+  try {
+    const query = `
+      SELECT 
+        s.id,
+        s.date_bought as "Date Bought",
+        s.date_expiry as "Date Expiry",
+        s.duration as "Duration",
+        s.customer_name as "Customer Name",
+        s.plan as "Plan",
+        s.cpu as "CPU",
+        s.ram as "RAM",
+        s.disk as "DISK",
+        s.amount as "Amount",
+        s.promo as "Promo",
+        s.payment_method as "Payment Method",
+        s.status as "Status",
+        u.username as "Created By",
+        s.created_at as "Created At"
+      FROM sales s 
+      JOIN users u ON s.created_by = u.id
+      ORDER BY s.date_bought DESC, s.created_at DESC
+    `;
+
+    db.all(query, [], (err, rows) => {
+      if (err) {
+        console.error('Error exporting sales:', err);
+        res.status(500).json({ error: 'Error exporting sales: ' + err.message });
+        return;
+      }
+
+      try {
+        // Create workbook and worksheet
+        const wb = XLSX.utils.book_new();
+        const ws = XLSX.utils.json_to_sheet(rows || []);
+
+        // Set column widths
+        const colWidths = [
+          { wch: 10 }, // ID
+          { wch: 15 }, // Date Bought
+          { wch: 15 }, // Date Expiry
+          { wch: 12 }, // Duration
+          { wch: 20 }, // Customer Name
+          { wch: 20 }, // Plan
+          { wch: 12 }, // CPU
+          { wch: 10 }, // RAM
+          { wch: 10 }, // DISK
+          { wch: 12 }, // Amount
+          { wch: 10 }, // Promo
+          { wch: 15 }, // Payment Method
+          { wch: 10 }, // Status
+          { wch: 15 }, // Created By
+          { wch: 20 }  // Created At
+        ];
+        ws['!cols'] = colWidths;
+
+        XLSX.utils.book_append_sheet(wb, ws, 'Sales');
+
+        // Generate buffer
+        const buffer = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' });
+
+        // Set headers for download
+        const filename = `sales_export_${new Date().toISOString().split('T')[0]}.xlsx`;
+        res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+        res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+        res.send(buffer);
+      } catch (xlsxError) {
+        console.error('Error creating Excel file:', xlsxError);
+        res.status(500).json({ error: 'Error creating Excel file: ' + xlsxError.message });
+      }
+    });
+  } catch (error) {
+    console.error('Error in export endpoint:', error);
+    res.status(500).json({ error: 'Error exporting sales: ' + error.message });
+  }
+});
+
+// Import sales from Excel
+app.post('/api/sales/import', requireAuth, upload.single('file'), (req, res) => {
+  if (!req.file) {
+    return res.status(400).json({ error: 'No file uploaded' });
+  }
+
+  try {
+    // Parse the Excel file
+    const workbook = XLSX.read(req.file.buffer, { type: 'buffer' });
+    const sheetName = workbook.SheetNames[0];
+    const worksheet = workbook.Sheets[sheetName];
+    const data = XLSX.utils.sheet_to_json(worksheet);
+
+    if (data.length === 0) {
+      return res.status(400).json({ error: 'Excel file is empty' });
+    }
+
+    // Get current user ID
+    const userId = req.session.userId;
+    if (!userId) {
+      return res.status(401).json({ error: 'Not authenticated' });
+    }
+
+    let successCount = 0;
+    let errorCount = 0;
+    const errors = [];
+    let processedCount = 0;
+    const totalRows = data.length;
+
+    // Process each row with promises
+    const insertPromises = data.map((row, index) => {
+      return new Promise((resolve) => {
+        try {
+          // Map Excel columns to database fields
+          const saleData = {
+            date_bought: row['Date Bought'] || row['date_bought'] || row['Date Bought'] || '',
+            date_expiry: row['Date Expiry'] || row['date_expiry'] || row['Date Expiry'] || null,
+            duration: row['Duration'] || row['duration'] || null,
+            customer_name: row['Customer Name'] || row['customer_name'] || row['Customer Name'] || '',
+            plan: row['Plan'] || row['plan'] || '',
+            cpu: row['CPU'] || row['cpu'] || '',
+            ram: row['RAM'] || row['ram'] || '',
+            disk: row['DISK'] || row['disk'] || '',
+            amount: parseFloat(row['Amount'] || row['amount'] || row['Amount'] || 0),
+            promo: row['Promo'] || row['promo'] || row['Promo'] || null,
+            payment_method: row['Payment Method'] || row['payment_method'] || row['Payment Method'] || '',
+            status: row['Status'] || row['status'] || row['Status'] || 'Pending',
+            created_by: userId
+          };
+
+          // Validate required fields
+          if (!saleData.date_bought || !saleData.customer_name || !saleData.plan || 
+              !saleData.cpu || !saleData.ram || !saleData.disk || !saleData.amount || 
+              !saleData.payment_method || !saleData.status) {
+            throw new Error('Missing required fields');
+          }
+
+          // Validate status
+          if (saleData.status !== 'Paid' && saleData.status !== 'Pending') {
+            saleData.status = 'Pending';
+          }
+
+          // Insert into database
+          db.run(
+            `INSERT INTO sales (date_bought, duration, date_expiry, customer_name, plan, cpu, ram, disk, amount, promo, payment_method, status, created_by)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+            [
+              saleData.date_bought,
+              saleData.duration || null,
+              saleData.date_expiry || null,
+              saleData.customer_name,
+              saleData.plan,
+              saleData.cpu,
+              saleData.ram,
+              saleData.disk,
+              saleData.amount,
+              saleData.promo || null,
+              saleData.payment_method,
+              saleData.status,
+              saleData.created_by
+            ],
+            function(err) {
+              if (err) {
+                errorCount++;
+                errors.push(`Row ${index + 2}: ${err.message}`);
+              } else {
+                successCount++;
+              }
+              processedCount++;
+              resolve();
+            }
+          );
+        } catch (error) {
+          errorCount++;
+          errors.push(`Row ${index + 2}: ${error.message}`);
+          processedCount++;
+          resolve();
+        }
+      });
+    });
+
+    // Wait for all inserts to complete
+    Promise.all(insertPromises).then(() => {
+      res.json({
+        success: true,
+        message: `Import completed: ${successCount} successful, ${errorCount} errors`,
+        successCount,
+        errorCount,
+        errors: errors.slice(0, 10) // Limit to first 10 errors
+      });
+    });
+  } catch (error) {
+    console.error('Error importing sales:', error);
+    res.status(500).json({ error: 'Error processing file: ' + error.message });
+  }
 });
 
 // Serve main page

@@ -171,6 +171,8 @@ function switchMainTab(tabName) {
             if (customerSearch) {
                 customerSearch.value = '';
             }
+            // Reset load flag to allow fresh load when switching tabs
+            hasLoadedSales = false;
             // Load sales data when switching to sales tab
             loadMonths();
             loadSales();
@@ -245,6 +247,18 @@ function setupEventListeners() {
     const addSaleBtn = document.getElementById('addSaleBtn');
     if (addSaleBtn) {
         addSaleBtn.addEventListener('click', () => openSaleModal());
+    }
+
+    // Export button
+    const exportBtn = document.getElementById('exportBtn');
+    if (exportBtn) {
+        exportBtn.addEventListener('click', handleExport);
+    }
+
+    // Import file input
+    const importFile = document.getElementById('importFile');
+    if (importFile) {
+        importFile.addEventListener('change', handleImport);
     }
 
     // Customer search
@@ -790,35 +804,56 @@ function handleCustomerSearch(e) {
 }
 
 // Filter and display sales based on month filter and search query
+let isLoadingSales = false; // Prevent infinite loops
+let hasLoadedSales = false; // Track if we've attempted to load sales
+
 function filterAndDisplaySales() {
-    // Use allSales which is populated by loadSales()
-    if (!allSales || allSales.length === 0) {
-        // If no sales loaded yet, try to load them
-        loadSales();
+    const tbody = document.getElementById('salesTableBody');
+    if (!tbody) return;
+    
+    // If we haven't loaded yet and not currently loading, trigger load
+    if (!hasLoadedSales && !isLoadingSales) {
+        isLoadingSales = true;
+        tbody.innerHTML = '<tr><td colspan="10" class="empty-state">Loading...</td></tr>';
+        loadSales().finally(() => {
+            isLoadingSales = false;
+        });
         return;
     }
     
-    let filteredSales = [...allSales];
-
-    // Apply month filter if set
-    if (currentMonth && currentYear) {
-        filteredSales = filteredSales.filter(sale => {
-            const saleDate = new Date(sale.date_bought);
-            const saleMonth = String(saleDate.getMonth() + 1).padStart(2, '0');
-            const saleYear = String(saleDate.getFullYear());
-            return saleMonth === currentMonth.padStart(2, '0') && saleYear === currentYear;
-        });
+    // If we've loaded but have no sales, show empty state
+    if (hasLoadedSales && (!allSales || allSales.length === 0)) {
+        tbody.innerHTML = '<tr><td colspan="10" class="empty-state">No sales records found</td></tr>';
+        return;
     }
+    
+    // If allSales exists and has data, filter and display
+    if (allSales && allSales.length > 0) {
+        let filteredSales = [...allSales];
 
-    // Apply search filter if set
-    if (currentSearchQuery) {
-        filteredSales = filteredSales.filter(sale => {
-            return sale.customer_name.toLowerCase().includes(currentSearchQuery);
-        });
+        // Apply month filter if set
+        if (currentMonth && currentYear) {
+            filteredSales = filteredSales.filter(sale => {
+                const saleDate = new Date(sale.date_bought);
+                const saleMonth = String(saleDate.getMonth() + 1).padStart(2, '0');
+                const saleYear = String(saleDate.getFullYear());
+                return saleMonth === currentMonth.padStart(2, '0') && saleYear === currentYear;
+            });
+        }
+
+        // Apply search filter if set
+        if (currentSearchQuery) {
+            filteredSales = filteredSales.filter(sale => {
+                return sale.customer_name.toLowerCase().includes(currentSearchQuery);
+            });
+        }
+
+        // Display filtered sales
+        displaySales(filteredSales);
+    } else if (hasLoadedSales) {
+        // If we've loaded but have no sales after filtering, show empty state
+        tbody.innerHTML = '<tr><td colspan="10" class="empty-state">No sales records found</td></tr>';
     }
-
-    // Display filtered sales
-    displaySales(filteredSales);
 }
 
 // Display sales in the table
@@ -865,13 +900,21 @@ async function loadSales() {
         const sales = await response.json();
 
         // Store all sales for filtering
-        allSales = sales;
+        allSales = sales || [];
+        hasLoadedSales = true; // Mark as loaded
 
         // Apply both month and search filters
         filterAndDisplaySales();
 
     } catch (error) {
         console.error('Error loading sales:', error);
+        allSales = [];
+        hasLoadedSales = true; // Mark as loaded even on error
+        // Show error state
+        const tbody = document.getElementById('salesTableBody');
+        if (tbody) {
+            tbody.innerHTML = '<tr><td colspan="10" class="empty-state">Error loading sales</td></tr>';
+        }
     }
 }
 
@@ -1535,15 +1578,203 @@ async function deleteSale(id) {
         const data = await response.json();
 
         if (response.ok) {
-            loadSales();
+            // Remove from local array immediately for instant UI update
+            allSales = allSales.filter(sale => sale.id !== id);
+            
+            // Update display immediately without calling loadSales (which would spam)
+            // Just filter and display what we have
+            let filteredSales = [...allSales];
+
+            // Apply month filter if set
+            if (currentMonth && currentYear) {
+                filteredSales = filteredSales.filter(sale => {
+                    const saleDate = new Date(sale.date_bought);
+                    const saleMonth = String(saleDate.getMonth() + 1).padStart(2, '0');
+                    const saleYear = String(saleDate.getFullYear());
+                    return saleMonth === currentMonth.padStart(2, '0') && saleYear === currentYear;
+                });
+            }
+
+            // Apply search filter if set
+            if (currentSearchQuery) {
+                filteredSales = filteredSales.filter(sale => {
+                    return sale.customer_name.toLowerCase().includes(currentSearchQuery);
+                });
+            }
+
+            // Display filtered sales immediately
+            displaySales(filteredSales);
+            
+            // Reload statistics and refresh from server in background (but only once)
             loadStatistics();
-            // Stay on sales page after deletion
-            switchPage('sales');
+            
+            // Reload from server after a short delay to ensure consistency
+            setTimeout(async () => {
+                await loadSales();
+            }, 500);
         } else {
             alert(data.error || 'Error deleting sale');
         }
     } catch (error) {
+        console.error('Delete error:', error);
         alert('Network error. Please try again.');
+    }
+}
+
+// Export sales to Excel
+async function handleExport() {
+    try {
+        const exportBtn = document.getElementById('exportBtn');
+        if (exportBtn) {
+            exportBtn.disabled = true;
+            exportBtn.textContent = 'Exporting...';
+        }
+
+        const response = await fetch(`${API_BASE}/sales/export`, {
+            credentials: 'include'
+        });
+
+        if (!response.ok) {
+            // Check if response is JSON or HTML/text
+            const contentType = response.headers.get('content-type');
+            let errorMessage = 'Export failed';
+            
+            if (contentType && contentType.includes('application/json')) {
+                try {
+                    const error = await response.json();
+                    errorMessage = error.error || errorMessage;
+                } catch (e) {
+                    errorMessage = `Server error: ${response.status} ${response.statusText}`;
+                }
+            } else {
+                // If it's HTML or text, read as text
+                const text = await response.text();
+                if (text.includes('Unauthorized') || response.status === 401) {
+                    errorMessage = 'Unauthorized. Please login again.';
+                } else {
+                    errorMessage = `Server error: ${response.status} ${response.statusText}`;
+                }
+            }
+            throw new Error(errorMessage);
+        }
+
+        // Check if response is actually an Excel file
+        const contentType = response.headers.get('content-type');
+        if (!contentType || !contentType.includes('spreadsheet') && !contentType.includes('excel')) {
+            const text = await response.text();
+            console.error('Unexpected response:', text.substring(0, 200));
+            throw new Error('Server returned an unexpected response. Please check console for details.');
+        }
+
+        // Get the blob
+        const blob = await response.blob();
+        
+        // Create download link
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `sales_export_${new Date().toISOString().split('T')[0]}.xlsx`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        window.URL.revokeObjectURL(url);
+
+        // Show success message
+        alert('Sales data exported successfully!');
+    } catch (error) {
+        console.error('Export error:', error);
+        alert('Error exporting sales: ' + error.message);
+    } finally {
+        const exportBtn = document.getElementById('exportBtn');
+        if (exportBtn) {
+            exportBtn.disabled = false;
+            exportBtn.textContent = '📥 Export';
+        }
+    }
+}
+
+// Import sales from Excel
+async function handleImport(event) {
+    const file = event.target.files[0];
+    if (!file) {
+        return;
+    }
+
+    // Validate file type
+    const validTypes = [
+        'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        'application/vnd.ms-excel',
+        'text/csv'
+    ];
+    const validExtensions = ['.xlsx', '.xls', '.csv'];
+    const fileExtension = '.' + file.name.split('.').pop().toLowerCase();
+
+    if (!validTypes.includes(file.type) && !validExtensions.includes(fileExtension)) {
+        alert('Invalid file type. Please upload an Excel file (.xlsx, .xls) or CSV file.');
+        event.target.value = '';
+        return;
+    }
+
+    if (!confirm(`Are you sure you want to import ${file.name}? This will add new sales records to the database.`)) {
+        event.target.value = '';
+        return;
+    }
+
+    try {
+        const formData = new FormData();
+        formData.append('file', file);
+
+        // Show loading
+        const importLabel = document.querySelector('label[for="importFile"]');
+        if (importLabel) {
+            importLabel.style.opacity = '0.6';
+            importLabel.style.pointerEvents = 'none';
+        }
+
+        const response = await fetch(`${API_BASE}/sales/import`, {
+            method: 'POST',
+            credentials: 'include',
+            body: formData
+        });
+
+        const data = await response.json();
+
+        if (!response.ok) {
+            throw new Error(data.error || 'Import failed');
+        }
+
+        // Show results
+        let message = `Import completed!\n\n`;
+        message += `✅ Successful: ${data.successCount}\n`;
+        message += `❌ Errors: ${data.errorCount}\n\n`;
+        
+        if (data.errors && data.errors.length > 0) {
+            message += `First few errors:\n${data.errors.slice(0, 5).join('\n')}`;
+            if (data.errors.length > 5) {
+                message += `\n... and ${data.errors.length - 5} more errors`;
+            }
+        }
+
+        alert(message);
+
+        // Reload sales and statistics
+        if (data.successCount > 0) {
+            loadSales();
+            loadStatistics();
+        }
+    } catch (error) {
+        console.error('Import error:', error);
+        alert('Error importing sales: ' + error.message);
+    } finally {
+        // Reset file input
+        event.target.value = '';
+        
+        // Reset loading state
+        const importLabel = document.querySelector('label[for="importFile"]');
+        if (importLabel) {
+            importLabel.style.opacity = '1';
+            importLabel.style.pointerEvents = 'auto';
+        }
     }
 }
 
