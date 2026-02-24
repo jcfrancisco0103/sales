@@ -813,6 +813,32 @@ body::before {
     box-shadow: 0 0 15px rgba(16, 185, 129, 0.4);
 }
 
+.btn-upgrade {
+    background: linear-gradient(135deg, rgba(139, 92, 246, 0.3), rgba(99, 102, 241, 0.3));
+    color: white;
+    padding: 0.5rem 1rem;
+    border: 1px solid rgba(139, 92, 246, 0.4);
+    border-radius: 8px;
+    cursor: pointer;
+    font-size: 0.875rem;
+    transition: all 0.2s ease;
+}
+
+.btn-upgrade:hover {
+    background: linear-gradient(135deg, rgba(139, 92, 246, 0.4), rgba(99, 102, 241, 0.4));
+    transform: translateY(-2px);
+    box-shadow: 0 0 15px rgba(139, 92, 246, 0.4);
+}
+
+.upgrade-current-info {
+    margin-bottom: 1rem;
+    padding: 0.75rem 1rem;
+    background: rgba(30, 30, 60, 0.5);
+    border-radius: 8px;
+    color: var(--text-secondary);
+    font-size: 0.9rem;
+}
+
 .action-buttons {
     display: flex;
     gap: 0.5rem;
@@ -1149,6 +1175,7 @@ body::before {
     }
 
     .btn-edit,
+    .btn-upgrade,
     .btn-renew,
     .btn-danger {
         width: 100%;

@@ -6,6 +6,7 @@ console.log('API_BASE:', API_BASE);
 
 // State
 let currentEditingId = null;
+let currentUpgradeSale = null; // Sale being upgraded
 let currentMonth = '';
 let currentYear = '';
 let allSales = []; // Store all sales for filtering
@@ -19,38 +20,38 @@ const PLAN_DATA = {
         amount: 95,
         ram: '2GB',
         cpu: '1 vCore',
-        disk: '15GB'
+        disk: '10GB'
     },
     'Pig Plan': {
         amount: 199,
         ram: '4GB',
         cpu: '2 vCores',
-        disk: '30GB'
+        disk: '15GB'
     },
     'Wolf Plan': {
         amount: 299,
         ram: '6GB',
         cpu: '3 vCores',
-        disk: '45GB'
+        disk: '20GB'
     },
     // Enterprise Dedicated Plans
     'Zombie Plan': {
         amount: 499,
         ram: '8GB',
         cpu: '4 vCores',
-        disk: '70GB'
+        disk: '30GB'
     },
     'Skeleton Plan': {
         amount: 699,
         ram: '12GB',
         cpu: '5 vCores',
-        disk: '100GB'
+        disk: '40GB'
     },
     'Ender Dragon Plan': {
         amount: 999,
         ram: '16GB',
         cpu: '6 vCores',
-        disk: '150GB'
+        disk: '60GB'
     }
 };
 
@@ -350,6 +351,27 @@ function setupEventListeners() {
         saleModal.addEventListener('click', (e) => {
             if (e.target.id === 'saleModal') {
                 closeSaleModal();
+            }
+        });
+    }
+
+    // Upgrade modal
+    const upgradeForm = document.getElementById('upgradeForm');
+    if (upgradeForm) {
+        upgradeForm.addEventListener('submit', handleUpgradeSubmit);
+    }
+    const upgradeCancelBtn = document.getElementById('upgradeCancelBtn');
+    if (upgradeCancelBtn) {
+        upgradeCancelBtn.addEventListener('click', closeUpgradeModal);
+    }
+    document.querySelectorAll('.upgrade-close').forEach(btn => {
+        btn.addEventListener('click', closeUpgradeModal);
+    });
+    const upgradeModal = document.getElementById('upgradeModal');
+    if (upgradeModal) {
+        upgradeModal.addEventListener('click', (e) => {
+            if (e.target.id === 'upgradeModal') {
+                closeUpgradeModal();
             }
         });
     }
@@ -879,6 +901,7 @@ function displaySales(sales) {
             <td>
                 <div class="action-buttons">
                     <button class="btn btn-edit" onclick="editSale(${sale.id})">Edit</button>
+                    <button class="btn btn-upgrade" onclick="openUpgradeModal(${sale.id})" title="Upgrade server resources">Upgrade</button>
                     <button class="btn btn-renew" onclick="renewSale(${sale.id})" title="Renew subscription">Renew</button>
                     <button class="btn btn-danger" onclick="deleteSale(${sale.id})">Delete</button>
                 </div>
@@ -953,6 +976,7 @@ function displaySales(sales) {
                 <td>
                     <div class="action-buttons">
                         <button class="btn btn-edit" onclick="editSale(${sale.id})">Edit</button>
+                        <button class="btn btn-upgrade" onclick="openUpgradeModal(${sale.id})" title="Upgrade server resources">Upgrade</button>
                         <button class="btn btn-renew" onclick="renewSale(${sale.id})" title="Renew subscription">Renew</button>
                         <button class="btn btn-danger" onclick="deleteSale(${sale.id})">Delete</button>
                     </div>
@@ -1398,6 +1422,163 @@ function closeSaleModal() {
     document.getElementById('planSelect').value = '';
     handlePlanSelection(); // Reset readonly states
     currentEditingId = null;
+}
+
+// Parse current RAM string to number (e.g. "6GB" -> 6)
+function parseRamValue(str) {
+    if (!str || typeof str !== 'string') return 0;
+    const num = parseFloat(String(str).replace(/GB/gi, '').trim());
+    return isNaN(num) ? 0 : num;
+}
+
+// Parse current CPU string to number (e.g. "3 vCores" -> 3, "150%" -> 150)
+function parseCpuValue(str) {
+    if (!str || typeof str !== 'string') return 0;
+    const s = str.trim();
+    const vCoreMatch = s.match(/(\d+(?:\.\d+)?)\s*vcores?/i);
+    if (vCoreMatch) return parseFloat(vCoreMatch[1]);
+    const pctMatch = s.match(/(\d+(?:\.\d+)?)\s*%?/);
+    if (pctMatch) return parseFloat(pctMatch[1]);
+    const num = parseFloat(s);
+    return isNaN(num) ? 0 : num;
+}
+
+// Parse current disk/storage string to number (e.g. "20GB" -> 20)
+function parseDiskValue(str) {
+    if (!str || typeof str !== 'string') return 0;
+    const num = parseFloat(String(str).replace(/GB/gi, '').trim());
+    return isNaN(num) ? 0 : num;
+}
+
+// Format number back to RAM string (e.g. 7 -> "7GB")
+function formatRamDisplay(num) {
+    const n = parseFloat(num);
+    return isNaN(n) ? '0GB' : (n % 1 === 0 ? n + 'GB' : n.toFixed(1) + 'GB');
+}
+
+// Format number back to CPU string - prefer vCores if it looks like whole number, else %
+function formatCpuDisplay(num, originalStr) {
+    const n = parseFloat(num);
+    if (isNaN(n)) return originalStr || '0';
+    if (originalStr && /%/.test(originalStr)) return n + '%';
+    return n === 1 ? '1 vCore' : n + ' vCores';
+}
+
+// Format number back to disk string (e.g. 25 -> "25GB")
+function formatDiskDisplay(num) {
+    const n = parseFloat(num);
+    return isNaN(n) ? '0GB' : (n % 1 === 0 ? n + 'GB' : n.toFixed(1) + 'GB');
+}
+
+// Open upgrade modal
+function openUpgradeModal(id) {
+    const sale = allSales.find(s => s.id === id);
+    if (!sale) {
+        console.error('Sale not found for upgrade:', id);
+        return;
+    }
+    const modal = document.getElementById('upgradeModal');
+    if (!modal) {
+        console.error('Upgrade modal not found. Ensure you are on the sales page.');
+        return;
+    }
+    currentUpgradeSale = sale;
+    const infoEl = document.getElementById('upgradeCurrentInfo');
+    if (infoEl) {
+        infoEl.textContent = `Current: ${sale.ram} RAM, ${sale.cpu} CPU, ${sale.disk} Storage — ₱${formatCurrency(sale.amount)}. Enter amounts to add (leave blank to keep same).`;
+    }
+    const ramEl = document.getElementById('upgradeRam');
+    const cpuEl = document.getElementById('upgradeCpu');
+    const storageEl = document.getElementById('upgradeStorage');
+    const amountEl = document.getElementById('upgradeAmount');
+    if (ramEl) ramEl.value = '';
+    if (cpuEl) cpuEl.value = '';
+    if (storageEl) storageEl.value = '';
+    if (amountEl) amountEl.value = '';
+    modal.classList.remove('hidden');
+}
+
+// Close upgrade modal
+function closeUpgradeModal() {
+    document.getElementById('upgradeModal').classList.add('hidden');
+    document.getElementById('upgradeForm').reset();
+    currentUpgradeSale = null;
+}
+
+// Handle upgrade form submit — add values to current and PUT
+async function handleUpgradeSubmit(e) {
+    e.preventDefault();
+    if (!currentUpgradeSale) return;
+
+    const addRam = document.getElementById('upgradeRam').value.trim();
+    const addCpu = document.getElementById('upgradeCpu').value.trim();
+    const addStorage = document.getElementById('upgradeStorage').value.trim();
+    const addAmount = document.getElementById('upgradeAmount').value.trim();
+
+    const currentRam = parseRamValue(currentUpgradeSale.ram);
+    const currentCpu = parseCpuValue(currentUpgradeSale.cpu);
+    const currentDisk = parseDiskValue(currentUpgradeSale.disk);
+    const currentAmount = parseFloat(currentUpgradeSale.amount) || 0;
+
+    let newRam = currentRam;
+    let newCpu = currentCpu;
+    let newDisk = currentDisk;
+    let newAmount = currentAmount;
+
+    if (addRam) {
+        const add = parseFloat(addRam.replace(/GB/gi, '').trim()) || 0;
+        newRam = currentRam + add;
+    }
+    if (addCpu) {
+        const add = parseFloat(addCpu.replace(/vcores?/gi, '').replace(/%/g, '').trim()) || 0;
+        newCpu = currentCpu + add;
+    }
+    if (addStorage) {
+        const add = parseFloat(addStorage.replace(/GB/gi, '').trim()) || 0;
+        newDisk = currentDisk + add;
+    }
+    if (addAmount) {
+        const add = parseFloat(addAmount) || 0;
+        newAmount = currentAmount + add;
+    }
+
+    const saleData = {
+        date_bought: currentUpgradeSale.date_bought,
+        duration: currentUpgradeSale.duration || null,
+        date_expiry: currentUpgradeSale.date_expiry || null,
+        customer_name: currentUpgradeSale.customer_name,
+        plan: currentUpgradeSale.plan,
+        cpu: formatCpuDisplay(newCpu, currentUpgradeSale.cpu),
+        ram: formatRamDisplay(newRam),
+        disk: formatDiskDisplay(newDisk),
+        amount: newAmount,
+        promo: currentUpgradeSale.promo || null,
+        payment_method: currentUpgradeSale.payment_method,
+        status: currentUpgradeSale.status
+    };
+
+    try {
+        const response = await fetch(`${API_BASE}/sales/${currentUpgradeSale.id}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            credentials: 'include',
+            body: JSON.stringify(saleData)
+        });
+
+        const data = await response.json();
+
+        if (response.ok) {
+            closeUpgradeModal();
+            setTimeout(() => {
+                loadSales();
+                loadStatistics();
+            }, 100);
+        } else {
+            alert(data.error || 'Error saving upgrade');
+        }
+    } catch (err) {
+        alert('Network error. Please try again.');
+    }
 }
 
 // Handle sale form submit
