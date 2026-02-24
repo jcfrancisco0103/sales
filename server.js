@@ -413,14 +413,17 @@ app.get('/api/session', (req, res) => {
   }
 });
 
-// Get all sales
-app.get('/api/sales', requireAuth, (req, res) => {
+// Get all sales (ensureDbInitialized so db is ready; LEFT JOIN so all rows show even if user missing)
+app.get('/api/sales', ensureDbInitialized, requireAuth, (req, res) => {
+  if (!db) {
+    return res.status(503).json({ error: 'Database not ready' });
+  }
   const { month, year } = req.query;
   
   let query = `
-    SELECT s.*, u.username as created_by_username 
+    SELECT s.*, COALESCE(u.username, 'Unknown') as created_by_username 
     FROM sales s 
-    JOIN users u ON s.created_by = u.id
+    LEFT JOIN users u ON s.created_by = u.id
   `;
   const params = [];
 
@@ -437,11 +440,9 @@ app.get('/api/sales', requireAuth, (req, res) => {
       return res.status(500).json({ error: 'Error fetching sales' });
     }
     
-    // Only log if there are sales or if it's an error (reduce spam)
     if (rows.length > 0) {
       console.log(`Fetched ${rows.length} sales records`);
     }
-    // Don't log empty results to reduce terminal spam
     
     res.json(rows || []);
   });
@@ -908,7 +909,7 @@ app.get('/api/sales/export', requireAuth, (req, res) => {
 });
 
 // Import sales from Excel
-app.post('/api/sales/import', requireAuth, upload.single('file'), (req, res) => {
+app.post('/api/sales/import', ensureDbInitialized, requireAuth, upload.single('file'), (req, res) => {
   if (!req.file) {
     return res.status(400).json({ error: 'No file uploaded' });
   }

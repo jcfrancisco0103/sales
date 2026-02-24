@@ -914,26 +914,33 @@ function displaySales(sales) {
 async function loadSales() {
     try {
         const params = new URLSearchParams();
-        // Always fetch all sales for client-side filtering
-        // Month filter will be applied client-side along with search
-
         const response = await fetch(`${API_BASE}/sales?${params}`, {
             credentials: 'include'
         });
-        const sales = await response.json();
+        const data = await response.json();
 
-        // Store all sales for filtering
-        allSales = sales || [];
-        hasLoadedSales = true; // Mark as loaded
+        if (!response.ok) {
+            // API error (401, 500, etc.) - don't treat error body as sales array
+            allSales = [];
+            hasLoadedSales = true;
+            filterAndDisplaySales();
+            if (response.status === 401) {
+                console.warn('Not authenticated when loading sales');
+            } else {
+                console.error('Error loading sales:', response.status, data);
+            }
+            return;
+        }
 
-        // Apply both month and search filters
+        // Ensure we have an array (API can return [] or null)
+        allSales = Array.isArray(data) ? data : [];
+        hasLoadedSales = true;
+
         filterAndDisplaySales();
-
     } catch (error) {
         console.error('Error loading sales:', error);
         allSales = [];
-        hasLoadedSales = true; // Mark as loaded even on error
-        // Show error state
+        hasLoadedSales = true;
         const tbody = document.getElementById('salesTableBody');
         if (tbody) {
             tbody.innerHTML = '<tr><td colspan="10" class="empty-state">Error loading sales</td></tr>';
@@ -1938,10 +1945,12 @@ async function handleImport(event) {
 
         alert(message);
 
-        // Reload sales and statistics
+        // Force refresh sales list and show Sales tab so imported rows are visible
         if (data.successCount > 0) {
+            hasLoadedSales = false;
             loadSales();
             loadStatistics();
+            switchMainTab('sales');
         }
     } catch (error) {
         console.error('Import error:', error);
