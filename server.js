@@ -7,6 +7,7 @@ const bodyParser = require('body-parser');
 const multer = require('multer');
 const XLSX = require('xlsx');
 const path = require('path');
+const fs = require('fs');
 
 const app = express();
 const PORT = process.env.PORT || 3020;
@@ -75,29 +76,76 @@ app.use((req, res, next) => {
   next();
 });
 
-// Database setup
-// On Vercel, use /tmp directory which is writable (but not persistent)
-// For local development, use ./sales.db
-const dbPath = process.env.VERCEL ? '/tmp/sales.db' : './sales.db';
+// Database setup — local file next to server (use DATABASE_PATH env to override)
+const dbPath = process.env.DATABASE_PATH || path.join(__dirname, 'sales.db');
 
-const db = new sqlite3.Database(dbPath, sqlite3.OPEN_READWRITE | sqlite3.OPEN_CREATE, (err) => {
-  if (err) {
-    console.error('Error opening database:', err.message);
-    console.error('Database path:', dbPath);
-  } else {
-    console.log('Connected to SQLite database:', dbPath);
-    // Enable WAL mode for better concurrency
-    db.run('PRAGMA journal_mode = WAL;', (err) => {
-      if (err) {
-        console.log('Note: WAL mode not available (this is OK)');
-      }
-    });
-    // Initialize asynchronously to avoid blocking
-    setImmediate(() => {
-      initializeDatabase();
-    });
+let db = null;
+
+function isCorruptError(err) {
+  if (!err) return false;
+  const msg = (err.message || '').toLowerCase();
+  const code = err.code || '';
+  return code === 'SQLITE_CORRUPT' || code === 'SQLITE_NOTADB' || msg.includes('malformed') || msg.includes('corrupt');
+}
+
+function tryRemoveCorruptDb() {
+  try {
+    if (fs.existsSync(dbPath)) {
+      fs.unlinkSync(dbPath);
+      console.log('Removed corrupt database file, will create fresh one:', dbPath);
+    }
+    // Also remove WAL and SHM if present
+    const walPath = dbPath + '-wal';
+    const shmPath = dbPath + '-shm';
+    if (fs.existsSync(walPath)) fs.unlinkSync(walPath);
+    if (fs.existsSync(shmPath)) fs.unlinkSync(shmPath);
+  } catch (e) {
+    console.error('Could not remove corrupt database file:', e.message);
   }
-});
+}
+
+function openDatabase(retried) {
+  const conn = new sqlite3.Database(dbPath, sqlite3.OPEN_READWRITE | sqlite3.OPEN_CREATE, (err) => {
+    if (err) {
+      if (isCorruptError(err) && !retried) {
+        console.warn('Database corrupt on open:', err.message);
+        conn.close(() => {
+          tryRemoveCorruptDb();
+          openDatabase(true);
+        });
+        return;
+      }
+      console.error('Error opening database:', err.message);
+      console.error('Database path:', dbPath);
+      return;
+    }
+    // Reduce risk of corruption: full sync, busy timeout
+    conn.run('PRAGMA synchronous = FULL;', () => {});
+    conn.run('PRAGMA busy_timeout = 5000;', () => {});
+    conn.run('PRAGMA journal_mode = WAL;', (walErr) => {
+      if (walErr) console.log('Note: WAL mode not available (this is OK)');
+    });
+    // Check integrity; if corrupt, close and recreate
+    conn.get('PRAGMA integrity_check;', (intErr, row) => {
+      if (intErr || (row && row.integrity_check !== 'ok')) {
+        const reason = intErr ? intErr.message : (row ? row.integrity_check : 'unknown');
+        if (!retried) {
+          console.warn('Database integrity check failed:', reason);
+          conn.close(() => {
+            tryRemoveCorruptDb();
+            openDatabase(true);
+          });
+          return;
+        }
+      }
+      db = conn;
+      console.log('Connected to SQLite database:', dbPath);
+      setImmediate(() => initializeDatabase());
+    });
+  });
+}
+
+openDatabase(false);
 
 // Track initialization state
 let dbInitialized = false;

@@ -34,6 +34,8 @@ The server will run on port 3020 (or the port specified in the PORT environment 
 - Supabase
 - PlanetScale
 
+**If you see "SQLITE_CORRUPT" or "database disk image is malformed"**: The app now automatically removes a corrupt database file and creates a fresh one on startup. On Vercel, `/tmp` is ephemeral, so data can be lost between deploys or cold starts. For reliable production data, use a hosted database (e.g. Vercel Postgres, Turso, Supabase).
+
 ### Deployment Steps:
 
 1. Install Vercel CLI:
