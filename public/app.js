@@ -7,6 +7,8 @@ console.log('API_BASE:', API_BASE);
 // State
 let currentEditingId = null;
 let currentUpgradeSale = null; // Sale being upgraded
+let currentRenewSale = null; // Sale being renewed (Expirations tab)
+let expiringSales = []; // Sales expiring within 4 days
 let currentMonth = '';
 let currentYear = '';
 let allSales = []; // Store all sales for filtering
@@ -177,6 +179,16 @@ function switchMainTab(tabName) {
             // Load sales data when switching to sales tab
             loadMonths();
             loadSales();
+        } else if (tabName === 'expirations') {
+            const expirationsTab = document.getElementById('expirationsTab');
+            if (expirationsTab) {
+                expirationsTab.classList.add('active');
+            }
+            const monthFilterContainer = document.getElementById('monthFilterContainer');
+            if (monthFilterContainer) {
+                monthFilterContainer.style.display = 'none';
+            }
+            loadExpiringSales();
         }
     } catch (error) {
         console.error('Error switching main tab:', error);
@@ -372,6 +384,27 @@ function setupEventListeners() {
         upgradeModal.addEventListener('click', (e) => {
             if (e.target.id === 'upgradeModal') {
                 closeUpgradeModal();
+            }
+        });
+    }
+
+    // Renew modal (Expirations tab)
+    const renewForm = document.getElementById('renewForm');
+    if (renewForm) {
+        renewForm.addEventListener('submit', handleRenewSubmit);
+    }
+    const renewCancelBtn = document.getElementById('renewCancelBtn');
+    if (renewCancelBtn) {
+        renewCancelBtn.addEventListener('click', closeRenewModal);
+    }
+    document.querySelectorAll('.renew-close').forEach(btn => {
+        btn.addEventListener('click', closeRenewModal);
+    });
+    const renewModal = document.getElementById('renewModal');
+    if (renewModal) {
+        renewModal.addEventListener('click', (e) => {
+            if (e.target.id === 'renewModal') {
+                closeRenewModal();
             }
         });
     }
@@ -945,6 +978,162 @@ async function loadSales() {
         if (tbody) {
             tbody.innerHTML = '<tr><td colspan="10" class="empty-state">Error loading sales</td></tr>';
         }
+    }
+}
+
+// Days left until date_expiry (0 = today, negative = past)
+function getDaysLeft(dateExpiryStr) {
+    if (!dateExpiryStr) return null;
+    const expiry = new Date(dateExpiryStr);
+    expiry.setHours(0, 0, 0, 0);
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const diff = Math.ceil((expiry - today) / (1000 * 60 * 60 * 24));
+    return diff;
+}
+
+// Load and display sales expiring within the next 4 days (0–4 days left)
+async function loadExpiringSales() {
+    const tbody = document.getElementById('expirationsTableBody');
+    if (!tbody) return;
+    try {
+        const response = await fetch(`${API_BASE}/sales`, { credentials: 'include' });
+        const data = await response.json();
+        if (!response.ok) {
+            expiringSales = [];
+            tbody.innerHTML = '<tr><td colspan="8" class="empty-state">Unable to load expirations</td></tr>';
+            return;
+        }
+        const sales = Array.isArray(data) ? data : [];
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+        expiringSales = sales.filter(sale => {
+            if (!sale.date_expiry) return false;
+            if (sale.no_renew) return false; // Exclude marked "No Renew"
+            const daysLeft = getDaysLeft(sale.date_expiry);
+            return daysLeft !== null && daysLeft >= 0 && daysLeft <= 4;
+        });
+        displayExpiringSales(expiringSales);
+    } catch (error) {
+        console.error('Error loading expiring sales:', error);
+        expiringSales = [];
+        tbody.innerHTML = '<tr><td colspan="8" class="empty-state">Error loading expirations</td></tr>';
+    }
+}
+
+function displayExpiringSales(sales) {
+    const tbody = document.getElementById('expirationsTableBody');
+    if (!tbody) return;
+    if (!sales || sales.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="8" class="empty-state">No sales expiring soon</td></tr>';
+        return;
+    }
+    tbody.innerHTML = sales.map(sale => {
+        const daysLeft = getDaysLeft(sale.date_expiry);
+        const daysText = daysLeft === 0 ? 'Today' : daysLeft === 1 ? '1 day' : `${daysLeft} days`;
+        return `
+        <tr>
+            <td>${formatDate(sale.date_bought)}</td>
+            <td>${sale.date_expiry ? formatDate(sale.date_expiry) : '-'}</td>
+            <td>${daysText}</td>
+            <td>${escapeHtml(sale.customer_name)}</td>
+            <td>${escapeHtml(sale.plan)}</td>
+            <td>₱${formatCurrency(sale.amount)}</td>
+            <td><span class="status-badge ${(sale.status || '').toLowerCase()}">${sale.status || '-'}</span></td>
+            <td>
+                <div class="action-buttons">
+                    <button class="btn btn-renew" onclick="openRenewModalFromId(${sale.id})" title="Renew subscription">Renew</button>
+                    <button class="btn btn-secondary" onclick="markNoRenew(${sale.id})" title="Customer will not renew">No Renew</button>
+                </div>
+            </td>
+        </tr>
+    `;
+    }).join('');
+}
+
+function openRenewModalFromId(id) {
+    const sale = expiringSales.find(s => s.id === id);
+    if (sale) openRenewModal(sale);
+}
+
+function openRenewModal(sale) {
+    currentRenewSale = sale;
+    const infoEl = document.getElementById('renewCurrentInfo');
+    if (infoEl) {
+        infoEl.textContent = `${escapeHtml(sale.customer_name)} — ${escapeHtml(sale.plan)} (expires ${sale.date_expiry ? formatDate(sale.date_expiry) : '-'})`;
+    }
+    const durationEl = document.getElementById('renewDuration');
+    if (durationEl) {
+        durationEl.value = sale.duration || '';
+    }
+    const amountEl = document.getElementById('renewAmount');
+    if (amountEl) {
+        amountEl.value = sale.amount != null ? sale.amount : '';
+    }
+    document.getElementById('renewModal').classList.remove('hidden');
+}
+
+function closeRenewModal() {
+    currentRenewSale = null;
+    document.getElementById('renewModal').classList.add('hidden');
+    document.getElementById('renewForm').reset();
+}
+
+async function handleRenewSubmit(e) {
+    e.preventDefault();
+    if (!currentRenewSale) return;
+    const durationEl = document.getElementById('renewDuration');
+    const amountEl = document.getElementById('renewAmount');
+    const duration = durationEl ? durationEl.value.trim() : '';
+    const amount = amountEl && amountEl.value.trim() !== '' ? amountEl.value : undefined;
+    if (!duration) {
+        alert('Please select a duration.');
+        return;
+    }
+    try {
+        const body = { duration };
+        if (amount !== undefined) body.amount = amount;
+        const response = await fetch(`${API_BASE}/sales/${currentRenewSale.id}/renew`, {
+            method: 'POST',
+            credentials: 'include',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(body)
+        });
+        const data = await response.json();
+        if (response.ok) {
+            closeRenewModal();
+            loadExpiringSales();
+            loadStatistics();
+            if (typeof loadSales === 'function') loadSales();
+            alert('Subscription renewed successfully!');
+        } else {
+            alert(data.error || 'Error renewing subscription');
+        }
+    } catch (err) {
+        alert('Network error. Please try again.');
+    }
+}
+
+async function markNoRenew(id) {
+    if (!confirm('Mark this sale as "No Renew"? It will be removed from the Expirations list (customer will not renew).')) {
+        return;
+    }
+    try {
+        const response = await fetch(`${API_BASE}/sales/${id}/no-renew`, {
+            method: 'POST',
+            credentials: 'include'
+        });
+        const data = await response.json();
+        if (response.ok) {
+            loadExpiringSales();
+            loadStatistics();
+            if (typeof loadSales === 'function') loadSales();
+            alert('Marked as No Renew. It will no longer appear in Expirations.');
+        } else {
+            alert(data.error || 'Failed to update.');
+        }
+    } catch (err) {
+        alert('Network error. Please try again.');
     }
 }
 

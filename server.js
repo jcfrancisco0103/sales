@@ -215,6 +215,7 @@ function initializeDatabase() {
       // Try to add columns (ignore if they exist)
       db.run(`ALTER TABLE sales ADD COLUMN date_expiry TEXT`, () => {});
       db.run(`ALTER TABLE sales ADD COLUMN duration TEXT`, () => {});
+      db.run(`ALTER TABLE sales ADD COLUMN no_renew INTEGER DEFAULT 0`, () => {});
       
       // Mark as initialized immediately - don't wait for system user
       dbInitialized = true;
@@ -700,12 +701,13 @@ app.put('/api/sales/:id', requireAuth, (req, res) => {
   );
 });
 
-// Renew sale
+// Renew sale (body: { duration?: string, amount?: number } - duration required from form or existing sale)
 app.post('/api/sales/:id/renew', requireAuth, (req, res) => {
   const { id } = req.params;
+  const { duration: bodyDuration, amount: bodyAmount } = req.body || {};
 
   // Get the current sale to find duration and current expiry
-  db.get('SELECT duration, date_expiry FROM sales WHERE id = ?', [id], (err, sale) => {
+  db.get('SELECT duration, date_expiry, amount FROM sales WHERE id = ?', [id], (err, sale) => {
     if (err) {
       return res.status(500).json({ error: 'Error fetching sale' });
     }
@@ -713,19 +715,22 @@ app.post('/api/sales/:id/renew', requireAuth, (req, res) => {
       return res.status(404).json({ error: 'Sale not found' });
     }
 
-    if (!sale.duration) {
-      return res.status(400).json({ error: 'Cannot renew: Duration not set for this sale' });
+    const duration = (bodyDuration && bodyDuration.trim()) || sale.duration;
+    if (!duration) {
+      return res.status(400).json({ error: 'Cannot renew: Duration is required (select in form or set on sale)' });
     }
 
     // Calculate new expiry date
     let newExpiryDate;
     const today = new Date();
-    
+    today.setHours(0, 0, 0, 0);
+
     // Use current expiry date if it exists and is in the future, otherwise use today
     let baseDate = today;
     if (sale.date_expiry) {
       const expiryDate = new Date(sale.date_expiry);
-      if (expiryDate > today) {
+      expiryDate.setHours(0, 0, 0, 0);
+      if (expiryDate >= today) {
         baseDate = expiryDate;
       }
     }
@@ -733,7 +738,7 @@ app.post('/api/sales/:id/renew', requireAuth, (req, res) => {
     const newExpiry = new Date(baseDate);
 
     // Add duration to the base date
-    switch (sale.duration) {
+    switch (duration) {
       case '1 month':
         newExpiry.setMonth(newExpiry.getMonth() + 1);
         break;
@@ -753,28 +758,65 @@ app.post('/api/sales/:id/renew', requireAuth, (req, res) => {
     const day = String(newExpiry.getDate()).padStart(2, '0');
     newExpiryDate = `${year}-${month}-${day}`;
 
-    // Update the sale with new expiry date
-    db.run(
-      'UPDATE sales SET date_expiry = ? WHERE id = ?',
-      [newExpiryDate, id],
-      function(updateErr) {
-        if (updateErr) {
-          console.error('Error renewing sale:', updateErr);
-          return res.status(500).json({ error: 'Error renewing sale: ' + updateErr.message });
-        }
-        if (this.changes === 0) {
-          return res.status(404).json({ error: 'Sale not found' });
-        }
-        console.log('Sale renewed successfully:', {
-          id,
-          oldExpiry: sale.date_expiry,
-          newExpiry: newExpiryDate,
-          duration: sale.duration
-        });
-        res.json({ success: true, newExpiry: newExpiryDate });
+    const updateAmount = bodyAmount != null && bodyAmount !== '' && !isNaN(Number(bodyAmount));
+    const newAmount = updateAmount ? Number(bodyAmount) : sale.amount;
+
+    const updateSql = updateAmount
+      ? 'UPDATE sales SET date_expiry = ?, duration = ?, amount = ? WHERE id = ?'
+      : 'UPDATE sales SET date_expiry = ?, duration = ? WHERE id = ?';
+    const updateParams = updateAmount
+      ? [newExpiryDate, duration, newAmount, id]
+      : [newExpiryDate, duration, id];
+
+    db.run(updateSql, updateParams, function(updateErr) {
+      if (updateErr) {
+        console.error('Error renewing sale:', updateErr);
+        return res.status(500).json({ error: 'Error renewing sale: ' + updateErr.message });
       }
-    );
+      if (this.changes === 0) {
+        return res.status(404).json({ error: 'Sale not found' });
+      }
+      console.log('Sale renewed successfully:', {
+        id,
+        oldExpiry: sale.date_expiry,
+        newExpiry: newExpiryDate,
+        duration
+      });
+      res.json({ success: true, newExpiry: newExpiryDate });
+    });
   });
+});
+
+// Mark sale as "No Renew" (customer won't renew; hide from Expirations tab)
+app.post('/api/sales/:id/no-renew', ensureDbInitialized, requireAuth, (req, res) => {
+  if (!db) {
+    return res.status(503).json({ error: 'Database not ready' });
+  }
+  const id = req.params.id;
+
+  function doUpdate() {
+    db.run('UPDATE sales SET no_renew = 1 WHERE id = ?', [id], function(err) {
+      if (err) {
+        if (err.message && err.message.includes('no such column: no_renew')) {
+          return db.run('ALTER TABLE sales ADD COLUMN no_renew INTEGER DEFAULT 0', (alterErr) => {
+            if (alterErr) {
+              console.error('Error adding no_renew column:', alterErr);
+              return res.status(500).json({ error: 'Error updating sale' });
+            }
+            doUpdate();
+          });
+        }
+        console.error('Error in no-renew:', err);
+        return res.status(500).json({ error: 'Error updating sale' });
+      }
+      if (this.changes === 0) {
+        return res.status(404).json({ error: 'Sale not found' });
+      }
+      res.json({ success: true });
+    });
+  }
+
+  doUpdate();
 });
 
 // Delete sale
