@@ -2,54 +2,20 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
     <title>AstryxNodes - Sales Management System</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="styles.css">
     <style>
-        /* Tab Navigation Styles */
-        .main-tabs {
-            display: flex;
-            gap: 0.5rem;
-            padding: 1rem 2.5rem;
-            background: rgba(139, 92, 246, 0.1);
-            border-bottom: 1px solid var(--border-color);
-        }
-
-        .main-tab-btn {
-            padding: 0.75rem 1.5rem;
-            background: transparent;
-            border: 1px solid var(--border-color);
-            border-bottom: none;
-            color: var(--text-secondary);
-            cursor: pointer;
-            border-radius: 8px 8px 0 0;
-            transition: all 0.3s ease;
-            font-size: 1rem;
-            font-weight: 500;
-        }
-
-        .main-tab-btn:hover {
-            background: rgba(139, 92, 246, 0.2);
-            color: var(--text-primary);
-        }
-
-        .main-tab-btn.active {
-            background: var(--nebula-card);
-            color: var(--nebula-purple);
-            border-color: var(--nebula-purple);
-            box-shadow: 0 -2px 10px rgba(139, 92, 246, 0.3);
-        }
-
-        .tab-content {
-            display: none;
-        }
-
-        .tab-content.active {
-            display: block;
-        }
+        /* Tab navigation - base (overrides in styles.css for mobile) */
+        .main-tabs { display: flex; gap: 0.5rem; padding: 1rem 2.5rem; background: rgba(139, 92, 246, 0.1); border-bottom: 1px solid var(--border-color); }
+        .main-tab-btn { padding: 0.75rem 1.5rem; background: transparent; border: 1px solid var(--border-color); border-bottom: none; color: var(--text-secondary); cursor: pointer; border-radius: 8px 8px 0 0; transition: all 0.3s ease; font-size: 1rem; font-weight: 500; }
+        .main-tab-btn:hover { background: rgba(139, 92, 246, 0.2); color: var(--text-primary); }
+        .main-tab-btn.active { background: var(--nebula-card); color: var(--nebula-purple); border-color: var(--nebula-purple); box-shadow: 0 -2px 10px rgba(139, 92, 246, 0.3); }
+        .tab-content { display: none; }
+        .tab-content.active { display: block; }
     </style>
 </head>
 <body>
@@ -126,14 +92,14 @@
         <div id="homeTab" class="tab-content active">
             <div class="container">
                 <!-- Month Filter for Home Page -->
-                <div class="home-month-filter" style="margin-bottom: 2rem; display: flex; align-items: center; gap: 1rem; justify-content: flex-end;">
-                    <label for="homeMonthFilter" style="color: var(--text-secondary); font-weight: 500;">Filter by Month:</label>
-                    <select id="homeMonthFilter" style="padding: 0.75rem 1rem; border: 1px solid var(--border-color); border-radius: 8px; background: var(--nebula-card); color: var(--text-primary); font-size: 1rem; min-width: 200px; cursor: pointer; transition: all 0.3s ease;" onfocus="this.style.borderColor='var(--nebula-purple)'; this.style.boxShadow='0 0 10px rgba(139, 92, 246, 0.3)'" onblur="this.style.borderColor='var(--border-color)'; this.style.boxShadow='none'">
+                <div class="home-month-filter">
+                    <label for="homeMonthFilter" class="home-month-filter__label">Filter by Month:</label>
+                    <select id="homeMonthFilter" class="home-month-filter__select">
                         <option value="">All Time</option>
                     </select>
                 </div>
                 <!-- Statistics Cards -->
-                <div class="stats-grid" style="grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));">
+                <div class="stats-grid stats-grid--home">
                     <div class="stat-card">
                         <h3>Total Sales</h3>
                         <p class="stat-month" id="totalSalesMonth"></p>
@@ -213,11 +179,11 @@
                     <div class="search-container">
                         <input type="text" id="customerSearch" class="search-input" placeholder="Search by customer name...">
                     </div>
-                    <div style="display: flex; gap: 0.75rem; align-items: center;">
+                    <div class="action-bar__actions">
                         <button id="exportBtn" class="btn btn-secondary" title="Export to Excel">📥 Export</button>
-                        <label for="importFile" class="btn btn-secondary" style="cursor: pointer; margin: 0;" title="Import from Excel">
+                        <label for="importFile" class="btn btn-secondary btn-file-label" title="Import from Excel">
                             📤 Import
-                            <input type="file" id="importFile" accept=".xlsx,.xls,.csv" style="display: none;">
+                            <input type="file" id="importFile" accept=".xlsx,.xls,.csv" class="btn-file-input">
                         </label>
                         <button id="addSaleBtn" class="btn btn-primary">+ Add New Sale</button>
                     </div>
@@ -253,7 +219,7 @@
         <!-- Expirations Tab Content -->
         <div id="expirationsTab" class="tab-content">
             <div class="container">
-                <p class="expirations-intro" style="color: var(--text-secondary); margin-bottom: 1.5rem;">Sales expiring within the next 4 days.</p>
+                <p class="expirations-intro">Sales expiring within the next 4 days.</p>
                 <div class="table-container">
                     <table id="expirationsTable" class="sales-table">
                         <thead>
@@ -301,7 +267,7 @@
                     </div>
                     <div class="form-group">
                         <label for="dateExpiry">Date Expiry (Auto-calculated)</label>
-                        <input type="date" id="dateExpiry" readonly style="background-color: #f1f5f9; cursor: not-allowed;">
+                        <input type="date" id="dateExpiry" readonly class="input-readonly">
                     </div>
                     <div class="form-group">
                         <label for="customerName">Customer Name *</label>
