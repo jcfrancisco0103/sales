@@ -19,38 +19,38 @@ let currentSearchQuery = ''; // Store current search query for filtering
 const PLAN_DATA = {
     // Budget Dedicated Plans
     'Chicken Plan': {
-        amount: 95,
+        amount: 129,
         ram: '2GB',
         cpu: '1 vCore',
         disk: '10GB'
     },
     'Pig Plan': {
-        amount: 199,
+        amount: 249,
         ram: '4GB',
         cpu: '2 vCores',
         disk: '15GB'
     },
     'Wolf Plan': {
-        amount: 299,
+        amount: 349,
         ram: '6GB',
         cpu: '3 vCores',
         disk: '20GB'
     },
     // Enterprise Dedicated Plans
     'Zombie Plan': {
-        amount: 499,
+        amount: 549,
         ram: '8GB',
         cpu: '4 vCores',
         disk: '30GB'
     },
     'Skeleton Plan': {
-        amount: 699,
+        amount: 799,
         ram: '12GB',
         cpu: '5 vCores',
         disk: '40GB'
     },
     'Ender Dragon Plan': {
-        amount: 999,
+        amount: 1099,
         ram: '16GB',
         cpu: '6 vCores',
         disk: '60GB'
