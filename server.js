@@ -512,9 +512,10 @@ app.get('/api/statistics', requireAuth, (req, res) => {
     const pendingAmount = row && row.pending_amount ? parseFloat(row.pending_amount) : 0;
     const paidSales = row && row.paid_sales ? parseInt(row.paid_sales) : 0;
 
-    const ownerSalary = totalAmount * 0.35;
-    const developerSalary = totalAmount * 0.35;
-    const staffSalary = totalAmount * 0.25;
+    // Fixed monthly salaries (not percentage-based)
+    const ownerSalary = 1200;
+    const developerSalary = 1200;
+    const staffSalary = 850;
 
     res.json({
       totalSales: totalSales,
