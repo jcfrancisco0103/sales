@@ -515,7 +515,7 @@ app.get('/api/statistics', requireAuth, (req, res) => {
     // Fixed monthly salaries (not percentage-based)
     const ownerSalary = 1200;
     const developerSalary = 1200;
-    const staffSalary = 850;
+    const staffSalary = 700;
 
     res.json({
       totalSales: totalSales,
