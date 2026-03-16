@@ -702,90 +702,122 @@ app.put('/api/sales/:id', requireAuth, (req, res) => {
   );
 });
 
-// Renew sale (body: { duration?: string, amount?: number } - duration required from form or existing sale)
+// Renew sale (body: { duration?: string, amount?: number })
+// 1) Extends the existing sale's date_expiry so the subscription is up to date.
+// 2) Inserts a NEW sale row for the renewal payment so total sales and total amount increase.
 app.post('/api/sales/:id/renew', requireAuth, (req, res) => {
   const { id } = req.params;
   const { duration: bodyDuration, amount: bodyAmount } = req.body || {};
+  const userId = req.session && req.session.userId;
+  if (!userId) {
+    return res.status(401).json({ error: 'Unauthorized' });
+  }
 
-  // Get the current sale to find duration and current expiry
-  db.get('SELECT duration, date_expiry, amount FROM sales WHERE id = ?', [id], (err, sale) => {
-    if (err) {
-      return res.status(500).json({ error: 'Error fetching sale' });
-    }
-    if (!sale) {
-      return res.status(404).json({ error: 'Sale not found' });
-    }
-
-    const duration = (bodyDuration && bodyDuration.trim()) || sale.duration;
-    if (!duration) {
-      return res.status(400).json({ error: 'Cannot renew: Duration is required (select in form or set on sale)' });
-    }
-
-    // Calculate new expiry date
-    let newExpiryDate;
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-
-    // Use current expiry date if it exists and is in the future, otherwise use today
-    let baseDate = today;
-    if (sale.date_expiry) {
-      const expiryDate = new Date(sale.date_expiry);
-      expiryDate.setHours(0, 0, 0, 0);
-      if (expiryDate >= today) {
-        baseDate = expiryDate;
+  // Get full sale row so we can copy customer/plan and create the renewal sale record
+  db.get(
+    'SELECT duration, date_expiry, amount, customer_name, plan, cpu, ram, disk, payment_method, promo FROM sales WHERE id = ?',
+    [id],
+    (err, sale) => {
+      if (err) {
+        return res.status(500).json({ error: 'Error fetching sale' });
       }
-    }
-
-    const newExpiry = new Date(baseDate);
-
-    // Add duration to the base date
-    switch (duration) {
-      case '1 month':
-        newExpiry.setMonth(newExpiry.getMonth() + 1);
-        break;
-      case '6 Months':
-        newExpiry.setMonth(newExpiry.getMonth() + 6);
-        break;
-      case '1 Year':
-        newExpiry.setFullYear(newExpiry.getFullYear() + 1);
-        break;
-      default:
-        return res.status(400).json({ error: 'Invalid duration' });
-    }
-
-    // Format as YYYY-MM-DD
-    const year = newExpiry.getFullYear();
-    const month = String(newExpiry.getMonth() + 1).padStart(2, '0');
-    const day = String(newExpiry.getDate()).padStart(2, '0');
-    newExpiryDate = `${year}-${month}-${day}`;
-
-    const updateAmount = bodyAmount != null && bodyAmount !== '' && !isNaN(Number(bodyAmount));
-    const newAmount = updateAmount ? Number(bodyAmount) : sale.amount;
-
-    const updateSql = updateAmount
-      ? 'UPDATE sales SET date_expiry = ?, duration = ?, amount = ? WHERE id = ?'
-      : 'UPDATE sales SET date_expiry = ?, duration = ? WHERE id = ?';
-    const updateParams = updateAmount
-      ? [newExpiryDate, duration, newAmount, id]
-      : [newExpiryDate, duration, id];
-
-    db.run(updateSql, updateParams, function(updateErr) {
-      if (updateErr) {
-        console.error('Error renewing sale:', updateErr);
-        return res.status(500).json({ error: 'Error renewing sale: ' + updateErr.message });
-      }
-      if (this.changes === 0) {
+      if (!sale) {
         return res.status(404).json({ error: 'Sale not found' });
       }
-      console.log('Sale renewed successfully:', {
-        id,
-        oldExpiry: sale.date_expiry,
-        newExpiry: newExpiryDate,
-        duration
-      });
-      res.json({ success: true, newExpiry: newExpiryDate });
-    });
-  });
+
+      const duration = (bodyDuration && bodyDuration.trim()) || sale.duration;
+      if (!duration) {
+        return res.status(400).json({ error: 'Cannot renew: Duration is required (select in form or set on sale)' });
+      }
+
+      // Calculate new expiry date
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      let baseDate = today;
+      if (sale.date_expiry) {
+        const expiryDate = new Date(sale.date_expiry);
+        expiryDate.setHours(0, 0, 0, 0);
+        if (expiryDate >= today) {
+          baseDate = expiryDate;
+        }
+      }
+
+      const newExpiry = new Date(baseDate);
+      switch (duration) {
+        case '1 month':
+          newExpiry.setMonth(newExpiry.getMonth() + 1);
+          break;
+        case '6 Months':
+          newExpiry.setMonth(newExpiry.getMonth() + 6);
+          break;
+        case '1 Year':
+          newExpiry.setFullYear(newExpiry.getFullYear() + 1);
+          break;
+        default:
+          return res.status(400).json({ error: 'Invalid duration' });
+      }
+
+      const year = newExpiry.getFullYear();
+      const month = String(newExpiry.getMonth() + 1).padStart(2, '0');
+      const day = String(newExpiry.getDate()).padStart(2, '0');
+      const newExpiryDate = `${year}-${month}-${day}`;
+
+      const dateBoughtToday = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+      const renewalAmount = (bodyAmount != null && bodyAmount !== '' && !isNaN(Number(bodyAmount)))
+        ? Number(bodyAmount)
+        : sale.amount;
+
+      // 1) Update existing sale: extend expiry and duration only (keep original amount for the subscription record)
+      db.run(
+        'UPDATE sales SET date_expiry = ?, duration = ? WHERE id = ?',
+        [newExpiryDate, duration, id],
+        function(updateErr) {
+          if (updateErr) {
+            console.error('Error renewing sale (update):', updateErr);
+            return res.status(500).json({ error: 'Error renewing sale: ' + updateErr.message });
+          }
+          if (this.changes === 0) {
+            return res.status(404).json({ error: 'Sale not found' });
+          }
+
+          // 2) Insert a new sale row for the renewal payment so total sales and total amount increase
+          db.run(
+            `INSERT INTO sales (date_bought, duration, date_expiry, customer_name, plan, cpu, ram, disk, amount, promo, payment_method, status, created_by)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'Paid', ?)`,
+            [
+              dateBoughtToday,
+              duration,
+              newExpiryDate,
+              sale.customer_name,
+              sale.plan,
+              sale.cpu,
+              sale.ram,
+              sale.disk,
+              renewalAmount,
+              sale.promo || null,
+              sale.payment_method,
+              userId
+            ],
+            function(insertErr) {
+              if (insertErr) {
+                console.error('Error creating renewal sale record:', insertErr);
+                return res.status(500).json({ error: 'Error recording renewal sale: ' + insertErr.message });
+              }
+              console.log('Sale renewed successfully:', {
+                originalId: id,
+                renewalSaleId: this.lastID,
+                oldExpiry: sale.date_expiry,
+                newExpiry: newExpiryDate,
+                duration,
+                renewalAmount
+              });
+              res.json({ success: true, newExpiry: newExpiryDate, renewalSaleId: this.lastID });
+            }
+          );
+        }
+      );
+    }
+  );
 });
 
 // Mark sale as "No Renew" (customer won't renew; hide from Expirations tab)
